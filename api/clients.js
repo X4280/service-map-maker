@@ -6,7 +6,7 @@ const { Redis } = require("@upstash/redis");
 
 const HASH_KEY = "sa_clients";
 const MAX_NAME_LEN = 120;
-const MAX_PAYLOAD_BYTES = 200_000;   // one client's JSON blob
+const MAX_PAYLOAD_BYTES = 1_500_000; // one client's JSON blob (logos ride along as data URLs)
 const MAX_CLIENTS = 1000;             // total distinct clients stored
 
 function redis() {
