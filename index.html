@@ -1,0 +1,1514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Service Area Mapper</title>
+
+<link href="https://cdnjs.cloudflare.com/ajax/libs/mapbox-gl/3.17.0/mapbox-gl.css" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mapbox-gl/3.17.0/mapbox-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#0c0d0f;
+    --panel:#131417;
+    --panel-2:#1a1c20;
+    --line:#2a2d33;
+    --ink:#f3f4f6;
+    --ink-dim:#9aa0a8;
+    --ink-faint:#61666e;
+    --red:#ff2d2d;
+    --red-soft:rgba(255,45,45,.14);
+    --accent:#ffb020;
+    --radius:9px;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+    --sans:"Archivo",system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:var(--sans);
+    background:var(--bg);color:var(--ink);
+    display:grid;grid-template-columns:360px 1fr;height:100vh;overflow:hidden;
+  }
+  /* ---------- control panel ---------- */
+  .panel{
+    background:var(--panel);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;min-height:0;
+  }
+  .brand{
+    padding:20px 22px 16px;border-bottom:1px solid var(--line);
+  }
+  .brand h1{
+    font-size:19px;font-weight:800;letter-spacing:-.01em;margin:0;
+    text-transform:uppercase;line-height:1;
+  }
+  .brand h1 .dot{color:var(--red)}
+  .brand p{margin:7px 0 0;font-size:11.5px;color:var(--ink-faint);font-family:var(--mono);letter-spacing:.02em}
+  .scroll{overflow-y:auto;padding:18px 22px 10px;flex:1;min-height:0}
+  .scroll::-webkit-scrollbar{width:9px}
+  .scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+
+  .field{margin-bottom:17px}
+  label.lab{
+    display:block;font-family:var(--mono);font-size:10.5px;text-transform:uppercase;
+    letter-spacing:.09em;color:var(--ink-dim);margin-bottom:7px;
+  }
+  input[type=text],input[type=password],textarea,select{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+    border-radius:var(--radius);padding:9px 11px;font-size:13px;font-family:var(--sans);
+    outline:none;transition:border-color .15s;
+  }
+  input:focus,textarea:focus,select:focus{border-color:var(--red)}
+  textarea{resize:vertical;min-height:104px;font-family:var(--mono);font-size:12px;line-height:1.55}
+  select{appearance:none;cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--ink-dim) 50%),linear-gradient(135deg,var(--ink-dim) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+  .hint{font-size:10.5px;color:var(--ink-faint);margin-top:6px;line-height:1.5;font-family:var(--mono)}
+
+  .row{display:flex;gap:10px}
+  .row>*{flex:1}
+
+  /* segmented control */
+  .seg{display:flex;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:3px;gap:3px}
+  .seg button{
+    flex:1;background:transparent;border:0;color:var(--ink-dim);font-family:var(--mono);
+    font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:7px 0;border-radius:6px;cursor:pointer;
+  }
+  .seg button.on{background:var(--red);color:#fff}
+
+  /* sliders */
+  .slabel{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+  .slabel .val{font-family:var(--mono);font-size:11px;color:var(--red)}
+  input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:3px;background:var(--line);border-radius:3px;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--red);cursor:pointer;border:2px solid var(--panel)}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--red);cursor:pointer;border:2px solid var(--panel)}
+
+  /* toggles */
+  .tog{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-top:1px solid var(--line)}
+  .tog:first-child{border-top:0}
+  .tog span{font-size:12.5px;color:var(--ink)}
+  .switch{position:relative;width:38px;height:21px;flex:none}
+  .switch input{opacity:0;width:0;height:0}
+  .track{position:absolute;inset:0;background:var(--line);border-radius:21px;transition:.15s;cursor:pointer}
+  .track:before{content:"";position:absolute;width:15px;height:15px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s}
+  .switch input:checked + .track{background:var(--red)}
+  .switch input:checked + .track:before{transform:translateX(17px)}
+
+  .colorrow{display:flex;align-items:center;gap:10px}
+  input[type=color]{width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:7px;background:var(--panel-2);cursor:pointer}
+
+  .divider{height:1px;background:var(--line);margin:6px 0 17px}
+  .grouptitle{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);margin:2px 0 13px}
+
+  /* footer actions */
+  .actions{padding:15px 22px;border-top:1px solid var(--line);background:var(--panel)}
+  .btn{
+    width:100%;border:0;border-radius:var(--radius);padding:12px;font-family:var(--sans);
+    font-weight:600;font-size:13.5px;cursor:pointer;transition:.12s;
+  }
+  .btn-primary{background:var(--red);color:#fff}
+  .btn-primary:hover{background:#ff4545}
+  .btn-primary:disabled{background:#5a2323;color:#b98;cursor:default}
+  .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);margin-top:9px}
+  .btn-ghost:hover{border-color:var(--ink-dim)}
+  .btn-ghost:disabled{color:var(--ink-faint);cursor:default;border-color:var(--line)}
+  .status{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:12px;min-height:15px;line-height:1.5}
+  .status.err{color:var(--red)}
+  .status.ok{color:#5fd08a}
+
+  /* multi-select (states) */
+  select.multi{height:168px;padding:5px;background-image:none;appearance:none;cursor:default}
+  select.multi option{padding:5px 7px;border-radius:5px;font-size:12.5px}
+  select.multi option:checked{background:var(--red);color:#fff}
+
+  /* preset chips */
+  .presets{display:flex;flex-wrap:wrap;gap:7px}
+  .preset{display:flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim);border-radius:7px;padding:7px 10px;cursor:pointer;font-family:var(--mono);font-size:11px;letter-spacing:.02em;transition:.12s}
+  .preset:hover{border-color:var(--ink-dim);color:var(--ink)}
+  .preset.on{border-color:var(--red);color:var(--ink);background:#20222700}
+  .preset .swatch{width:11px;height:11px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+
+  /* saved-clients row */
+  .clientrow{display:flex;gap:8px}
+  .clientrow select{flex:1}
+  .iconbtn{flex:none;width:40px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim);border-radius:var(--radius);cursor:pointer;font-size:15px;line-height:1;transition:.12s}
+  .iconbtn:hover{border-color:var(--ink-dim);color:var(--ink)}
+  .iconbtn:disabled{opacity:.4;cursor:default}
+  .iconbtn.danger:hover{border-color:var(--red);color:var(--red)}
+
+  /* ---------- map ---------- */
+  .stage{position:relative;min-width:0}
+  #map{position:absolute;inset:0}
+  .arealabel{
+    position:absolute;top:26px;left:28px;z-index:5;pointer-events:none;
+    font-weight:800;text-transform:uppercase;font-size:38px;letter-spacing:-.01em;
+    color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.55);max-width:70%;line-height:.98;
+  }
+  .empty{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    z-index:4;background:var(--bg);text-align:center;padding:40px;
+  }
+  .empty div{max-width:360px}
+  .empty h2{font-weight:800;text-transform:uppercase;font-size:26px;margin:0 0 12px;letter-spacing:-.01em}
+  .empty p{color:var(--ink-dim);font-size:13.5px;line-height:1.6;margin:0}
+  .empty .k{color:var(--red);font-family:var(--mono)}
+  .badge{
+    position:absolute;bottom:22px;left:28px;z-index:5;font-family:var(--mono);font-size:11px;
+    color:var(--ink);background:rgba(12,13,15,.72);border:1px solid var(--line);
+    padding:7px 11px;border-radius:7px;backdrop-filter:blur(6px);display:none;
+  }
+  @media (max-width:820px){
+    body{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    .panel{max-height:52vh}
+    .arealabel{font-size:26px}
+  }
+</style>
+</head>
+<body>
+
+<aside class="panel">
+  <div class="brand">
+    <h1>Service Area<span class="dot">.</span>Mapper</h1>
+    <p>zips &rarr; red coverage blob</p>
+  </div>
+
+  <div class="scroll">
+    <div class="field">
+      <label class="lab" for="token">Mapbox public token</label>
+      <input type="password" id="token" placeholder="pk.eyJ1Ijoi..." autocomplete="off" spellcheck="false" />
+      <div class="hint">Starts with <b>pk.</b> Stored only in this browser. Get it at account.mapbox.com &rarr; tokens.</div>
+    </div>
+
+    <div class="field">
+      <label class="lab" for="clientSel">Saved clients</label>
+      <div class="clientrow">
+        <select id="clientSel"><option value="">— new / unsaved —</option></select>
+        <button class="iconbtn" id="clientSave" title="Save current name + zips + look">&#128190;</button>
+        <button class="iconbtn danger" id="clientDel" title="Delete selected client" disabled>&#128465;</button>
+      </div>
+      <div class="hint">Save stores the area name, zips and current look. Pick one to reload it instantly.</div>
+    </div>
+
+    <div class="field">
+      <label class="lab" for="area">Area name</label>
+      <input type="text" id="area" placeholder="Graber – STL" spellcheck="false" />
+    </div>
+
+    <div class="field">
+      <label class="lab">Area source</label>
+      <div class="seg" id="srcSeg">
+        <button data-v="zips" class="on">Zips</button>
+        <button data-v="states">States</button>
+        <button data-v="radius">Radius</button>
+      </div>
+    </div>
+
+    <div class="field" id="srcZips">
+      <label class="lab" for="zips">Zip codes</label>
+      <textarea id="zips" placeholder="63101, 63102 63103&#10;63104&#10;65201 ..."></textarea>
+      <div class="hint">Any separator works. Paste messy — it grabs every 5-digit code and de-dupes.</div>
+    </div>
+
+    <div class="field" id="srcStates" style="display:none">
+      <div class="slabel"><label class="lab" style="margin:0" for="states">States</label><span class="val" id="statesVal">0 selected</span></div>
+      <select id="states" multiple class="multi"><option disabled>Loading…</option></select>
+      <div class="hint">&#8984;/Ctrl-click to pick several. Uses real state boundaries, merged into one outline.</div>
+    </div>
+
+    <div class="field" id="srcRadius" style="display:none">
+      <label class="lab" for="centers">Center locations</label>
+      <textarea id="centers" placeholder="Dubuque, IA&#10;Cedar Rapids, IA&#10;52001"></textarea>
+      <div class="hint">One per line — city, address or zip. Each gets a circle; overlaps merge into one blob.</div>
+      <div class="slabel" style="margin-top:13px"><label class="lab" style="margin:0">Radius</label><span class="val" id="radiusVal">40 mi</span></div>
+      <input type="range" id="radius" min="5" max="250" step="5" value="40" />
+    </div>
+
+    <div class="field">
+      <label class="lab" for="style">Base map</label>
+      <select id="style">
+        <optgroup label="Modern (Apple/Google-like)">
+          <option value="mapbox://styles/mapbox/standard">Standard — clean 3D</option>
+          <option value="mapbox://styles/mapbox/standard-satellite">Standard satellite</option>
+        </optgroup>
+        <optgroup label="Classic">
+          <option value="mapbox://styles/mapbox/light-v11">Light (clean, for decks)</option>
+          <option value="mapbox://styles/mapbox/dark-v11">Dark</option>
+          <option value="mapbox://styles/mapbox/streets-v12">Streets</option>
+          <option value="mapbox://styles/mapbox/outdoors-v12">Outdoors (green)</option>
+          <option value="mapbox://styles/mapbox/navigation-day-v1">Navigation</option>
+          <option value="mapbox://styles/mapbox/satellite-streets-v12">Satellite</option>
+        </optgroup>
+        <optgroup label="Custom">
+          <option value="custom">Custom style URL…</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <div class="field" id="customWrap" style="display:none">
+      <label class="lab" for="customStyle">Custom style URL</label>
+      <input type="text" id="customStyle" placeholder="mapbox://styles/bjauke-ppm/cmrtb6n…" spellcheck="false" autocomplete="off" />
+      <div class="hint">From Mapbox Studio &rarr; your style &rarr; Share &rarr; <b>Style URL</b>. Paste the <b>mapbox://styles/…</b> value. Your token must have access to it.</div>
+    </div>
+
+    <div class="field">
+      <label class="lab">Quick looks</label>
+      <div class="presets" id="presets"></div>
+      <div class="hint">One click sets base map + outline + fill. Tweak anything after.</div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="grouptitle">Shape</div>
+
+    <div class="field">
+      <label class="lab">Hull type</label>
+      <div class="seg" id="hullSeg">
+        <button data-v="concave" class="on">Concave</button>
+        <button data-v="convex">Convex</button>
+      </div>
+      <div class="hint">Concave hugs the real outline. Convex = simpler enclosing shape.</div>
+    </div>
+
+    <div class="field" id="tightWrap">
+      <div class="slabel"><label class="lab" style="margin:0">Concave tightness</label><span class="val" id="tightVal">60 mi</span></div>
+      <input type="range" id="tight" min="20" max="200" step="5" value="60" />
+      <div class="hint">Lower = tighter to the points. Too low can break into pieces — nudge up if the shape vanishes.</div>
+    </div>
+
+    <div class="field">
+      <div class="slabel"><label class="lab" style="margin:0">Padding</label><span class="val" id="padVal">18 mi</span></div>
+      <input type="range" id="pad" min="0" max="60" step="2" value="18" />
+      <div class="hint">Grows the outline outward and rounds the corners — the marker-circle look.</div>
+    </div>
+
+    <div class="row">
+      <button class="btn btn-ghost" id="editToggle" style="margin-top:0" disabled>Edit shape</button>
+      <button class="btn btn-ghost" id="resetShape" style="margin-top:0" disabled>Reset</button>
+    </div>
+    <div class="hint" style="margin-top:8px">Drag a handle to reshape. Double-click a handle to delete it, click the outline to add one.</div>
+
+    <div class="divider"></div>
+    <div class="grouptitle">Style</div>
+
+    <div class="tog">
+      <span>Smooth corners</span>
+      <label class="switch"><input type="checkbox" id="smooth" checked><span class="track"></span></label>
+    </div>
+    <div class="tog">
+      <span>Fill area</span>
+      <label class="switch"><input type="checkbox" id="fill"><span class="track"></span></label>
+    </div>
+    <div class="tog">
+      <span>Show zip points</span>
+      <label class="switch"><input type="checkbox" id="dots"><span class="track"></span></label>
+    </div>
+    <div class="tog">
+      <span>Show name on map</span>
+      <label class="switch"><input type="checkbox" id="showLabel" checked><span class="track"></span></label>
+    </div>
+    <div class="tog">
+      <span>Declutter map <span style="color:var(--ink-faint);font-size:11px">· hide POIs/transit</span></span>
+      <label class="switch"><input type="checkbox" id="declutter"><span class="track"></span></label>
+    </div>
+
+    <div class="field" style="margin-top:17px">
+      <label class="lab">Outline</label>
+      <div class="colorrow">
+        <input type="color" id="lineColor" value="#ff2d2d" />
+        <input type="range" id="lineW" min="2" max="10" step="0.5" value="4.5" style="flex:1" />
+        <span class="val" id="lineWVal" style="font-family:var(--mono);font-size:11px;color:var(--red);width:34px;text-align:right">4.5</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="grouptitle">Motion — zoom-in video</div>
+
+    <div class="field">
+      <div class="slabel"><label class="lab" style="margin:0">Duration</label><span class="val" id="vidDurVal">7 s</span></div>
+      <input type="range" id="vidDur" min="3" max="14" step="0.5" value="7" />
+    </div>
+    <div class="field">
+      <div class="slabel"><label class="lab" style="margin:0">Start wide</label><span class="val" id="vidStartVal">continent</span></div>
+      <input type="range" id="vidStart" min="2.2" max="5.5" step="0.1" value="3.2" />
+      <div class="hint">Left = start further out (more cities appear on the way in).</div>
+    </div>
+    <div class="tog" style="border-top:1px solid var(--line)">
+      <span>Cinematic tilt</span>
+      <label class="switch"><input type="checkbox" id="vidTilt"><span class="track"></span></label>
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <div class="field" style="margin-bottom:0">
+        <label class="lab">Resolution</label>
+        <select id="vidRes">
+          <option value="4k">4K · 2160p</option>
+          <option value="1440">2K · 1440p</option>
+          <option value="1080">HD · 1080p</option>
+        </select>
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label class="lab">Format</label>
+        <select id="vidFormat">
+          <option value="landscape">16:9 landscape</option>
+          <option value="vertical">9:16 vertical</option>
+          <option value="square">1:1 square</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field" style="margin:14px 0 0">
+      <label class="lab">Frame rate</label>
+      <div class="seg" id="fpsSeg">
+        <button data-v="30" class="on">30 fps</button>
+        <button data-v="60">60 fps</button>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <button class="btn btn-ghost" id="preview" style="margin-top:0" disabled>Preview</button>
+      <button class="btn btn-primary" id="record" disabled>Record video</button>
+    </div>
+    <div class="hint" style="margin-top:9px" id="recHint">Draw an area first. Exports a true-4K, constant-frame-rate MP4 — drop it straight into your ad editor.</div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="draw">Draw area</button>
+    <button class="btn btn-ghost" id="download" disabled>Download PNG</button>
+    <div class="status" id="status"></div>
+  </div>
+</aside>
+
+<main class="stage">
+  <div id="map"></div>
+  <div class="arealabel" id="mapLabel"></div>
+  <div class="badge" id="badge"></div>
+  <div class="empty" id="empty">
+    <div>
+      <h2>Drop in a token &amp; some zips</h2>
+      <p>Paste your Mapbox <span class="k">pk.</span> token and a list of zip codes, then hit <b>Draw area</b>. It geocodes each zip, wraps them in a red coverage outline, and lets you export a clean PNG.</p>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  /* ---------- persistence (local only) ---------- */
+  var STORE = "sa_mapper_v1";
+  function saveSettings(){
+    var s = {
+      token: $("token").value.trim(),
+      area: $("area").value,
+      style: $("style").value,
+      customStyle: $("customStyle").value,
+      hull: hullType,
+      tight: $("tight").value,
+      pad: $("pad").value,
+      smooth: $("smooth").checked,
+      fill: $("fill").checked,
+      dots: $("dots").checked,
+      showLabel: $("showLabel").checked,
+      lineColor: $("lineColor").value,
+      lineW: $("lineW").value,
+      vidRes: $("vidRes").value,
+      vidFormat: $("vidFormat").value,
+      exportFps: exportFps,
+      declutter: $("declutter").checked,
+      fillOpacity: fillOpacity,
+      preset: activePreset,
+      srcMode: srcMode,
+      states: statesGeo ? selectedStates() : pendingStates,
+      centers: $("centers").value,
+      radius: $("radius").value
+    };
+    try{ localStorage.setItem(STORE, JSON.stringify(s)); }catch(e){}
+  }
+  function loadSettings(){
+    var s; try{ s = JSON.parse(localStorage.getItem(STORE)||"{}"); }catch(e){ s={}; }
+    if(s.token) $("token").value = s.token;
+    if(s.area) $("area").value = s.area;
+    if(s.style) $("style").value = s.style;
+    if(s.customStyle) $("customStyle").value = s.customStyle;
+    if(s.tight){ $("tight").value = s.tight; $("tightVal").textContent = s.tight+" mi"; }
+    if(s.pad!=null){ $("pad").value = s.pad; $("padVal").textContent = s.pad+" mi"; }
+    if(s.lineColor) $("lineColor").value = s.lineColor;
+    if(s.lineW){ $("lineW").value = s.lineW; $("lineWVal").textContent = s.lineW; }
+    if(typeof s.smooth==="boolean") $("smooth").checked = s.smooth;
+    if(typeof s.fill==="boolean") $("fill").checked = s.fill;
+    if(typeof s.dots==="boolean") $("dots").checked = s.dots;
+    if(typeof s.showLabel==="boolean") $("showLabel").checked = s.showLabel;
+    if(s.hull){ hullType = s.hull; syncSeg(); }
+    if(s.vidRes) $("vidRes").value = s.vidRes;
+    if(s.vidFormat) $("vidFormat").value = s.vidFormat;
+    if(s.exportFps){ exportFps = String(s.exportFps); syncFpsSeg(); }
+    if(typeof s.declutter==="boolean") $("declutter").checked = s.declutter;
+    if(s.fillOpacity!=null) fillOpacity = s.fillOpacity;
+    if(s.preset) activePreset = s.preset;
+    if(s.srcMode) srcMode = s.srcMode;
+    if(s.states) pendingStates = s.states;
+    if(s.centers) $("centers").value = s.centers;
+    if(s.radius){ $("radius").value = s.radius; $("radiusVal").textContent = s.radius+" mi"; }
+  }
+
+  /* ---------- hull type segmented control ---------- */
+  var hullType = "concave";
+  function syncSeg(){
+    var btns = $("hullSeg").querySelectorAll("button");
+    for(var i=0;i<btns.length;i++){ btns[i].classList.toggle("on", btns[i].dataset.v===hullType); }
+    $("tightWrap").style.display = ((srcMode||"zips")==="zips" && hullType==="concave") ? "" : "none";
+  }
+  $("hullSeg").addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b) return;
+    hullType = b.dataset.v; syncSeg(); saveSettings();
+  });
+
+  /* ---------- frame-rate segmented control ---------- */
+  var exportFps = "30";
+  function syncFpsSeg(){
+    var btns = $("fpsSeg").querySelectorAll("button");
+    for(var i=0;i<btns.length;i++){ btns[i].classList.toggle("on", btns[i].dataset.v===exportFps); }
+  }
+  $("fpsSeg").addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b) return;
+    exportFps = b.dataset.v; syncFpsSeg(); saveSettings();
+  });
+  ["vidRes","vidFormat"].forEach(function(id){ $(id).addEventListener("change", saveSettings); });
+
+  /* ---------- slider readouts ---------- */
+  $("tight").addEventListener("input", function(){ $("tightVal").textContent = this.value+" mi"; });
+  $("pad").addEventListener("input", function(){ $("padVal").textContent = this.value+" mi"; });
+  $("lineW").addEventListener("input", function(){ $("lineWVal").textContent = this.value; if(map&&map.getLayer("area-line")) map.setPaintProperty("area-line","line-width",parseFloat(this.value)); });
+  ["token","area","style","tight","pad","smooth","fill","dots","showLabel","lineColor","lineW"].forEach(function(id){
+    $(id).addEventListener("change", saveSettings);
+  });
+
+  /* ---------- map ---------- */
+  var map = null, lastArea = null, lastPoints = null;
+  var fillOpacity = 0.14, activePreset = "";
+  var srcMode = "zips", pendingStates = [], statesGeo = null;
+  var editing = false, editRings = null, baseArea = null, dragging = null;
+
+  function initMap(){
+    var token = $("token").value.trim();
+    if(!token || token.indexOf("pk.")!==0){ setStatus("Enter a valid public token (starts with pk.)", "err"); return false; }
+    mapboxgl.accessToken = token;
+    var st = styleURL() || "mapbox://styles/mapbox/light-v11";
+    if(map){ map.setStyle(st); return true; }
+    map = new mapboxgl.Map({
+      container:"map",
+      style:st,
+      center:[-93, 39],
+      zoom:3.4,
+      preserveDrawingBuffer:true,   // required for PNG export
+      antialias:true,               // smooth outline/road edges (no shimmer on zoom)
+      attributionControl:true
+    });
+    map.on("style.load", function(){ applyLook(); if(lastArea){ renderLayers(); } });
+    wireEdit();
+    return true;
+  }
+
+  /* ---------- zip parsing ---------- */
+  function parseZips(text){
+    var found = text.match(/\b\d{5}\b/g) || [];
+    var seen = {}, out = [];
+    for(var i=0;i<found.length;i++){ if(!seen[found[i]]){ seen[found[i]]=1; out.push(found[i]); } }
+    return out;
+  }
+
+  /* ---------- geocoding: batch first, per-zip fallback ---------- */
+  function geocodeChunkBatch(chunk, token){
+    var body = chunk.map(function(z){ return { q:z, country:"us", types:["postcode"], limit:1 }; });
+    return fetch("https://api.mapbox.com/search/geocode/v6/batch?access_token="+encodeURIComponent(token), {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
+    }).then(function(r){ if(!r.ok) return null; return r.json(); })
+      .then(function(d){ return (d && d.batch) ? d.batch : null; })
+      .catch(function(){ return null; });
+  }
+  function geocodeOne(zip, token){
+    return fetch("https://api.mapbox.com/search/geocode/v6/forward?q="+zip+"&country=us&types=postcode&limit=1&access_token="+encodeURIComponent(token))
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){ var f = d && d.features && d.features[0]; return (f&&f.geometry) ? f.geometry.coordinates : null; })
+      .catch(function(){ return null; });
+  }
+  function geocodeSequential(zips, token, coords, failed, onProg){
+    var i = 0, done = 0, CONC = 8;
+    function worker(){
+      if(i >= zips.length) return Promise.resolve();
+      var z = zips[i++];
+      return geocodeOne(z, token).then(function(c){
+        if(c) coords[z]=c; else failed.push(z);
+        done++; onProg(done);
+        return worker();
+      });
+    }
+    var pool = [];
+    for(var k=0;k<CONC;k++) pool.push(worker());
+    return Promise.all(pool);
+  }
+  function geocodeAll(zips, token, onProg){
+    var coords = {}, failed = [], CHUNK = 1000;
+    var chunks = [];
+    for(var i=0;i<zips.length;i+=CHUNK) chunks.push(zips.slice(i,i+CHUNK));
+    var done = 0;
+    return chunks.reduce(function(p, chunk){
+      return p.then(function(){
+        return geocodeChunkBatch(chunk, token).then(function(batch){
+          if(batch){
+            chunk.forEach(function(z, idx){
+              var fc = batch[idx], f = fc && fc.features && fc.features[0];
+              if(f && f.geometry) coords[z]=f.geometry.coordinates; else failed.push(z);
+              done++; onProg(done);
+            });
+          } else {
+            // batch unsupported/blocked for this token -> per-zip
+            return geocodeSequential(chunk, token, coords, failed, function(){ done++; onProg(done); });
+          }
+        });
+      });
+    }, Promise.resolve()).then(function(){ return { coords:coords, failed:failed }; });
+  }
+
+  /* ---------- build the coverage polygon ---------- */
+  function buildArea(coords){
+    var feats = Object.keys(coords).map(function(z){ return turf.point(coords[z], {zip:z}); });
+    var points = turf.featureCollection(feats);
+    var hull = null;
+    var pad = parseFloat($("pad").value);
+
+    if(feats.length >= 3){
+      if(hullType === "concave"){
+        try{ hull = turf.concave(points, { maxEdge: parseFloat($("tight").value), units:"miles" }); }catch(e){ hull = null; }
+      }
+      if(!hull){ hull = turf.convex(points); }   // fallback if concave fails
+    }
+    if(!hull){
+      // 1–2 zips (or hull failed): buffer points into a blob
+      var r = Math.max(pad, 12);
+      var blobs = feats.map(function(f){ return turf.buffer(f, r, {units:"miles"}); });
+      hull = blobs.reduce(function(acc, b){
+        if(!acc) return b;
+        try{ return turf.union(turf.featureCollection([acc, b])); }catch(e){ return acc; }
+      }, null);
+      pad = 0; // already buffered
+    }
+
+    if(pad > 0 && hull){ hull = turf.buffer(hull, pad, {units:"miles", steps:16}); }
+    if($("smooth").checked && hull){ hull = smoothPolygon(hull); }
+
+    return { area: hull, points: points };
+  }
+
+  // smooth with Chaikin corner-cutting (turf.polygonSmooth) — safe on closed rings,
+  // never self-intersects. Handles both Polygon and multi-blob MultiPolygon results.
+  function smoothPolygon(poly){
+    try{
+      // light simplify first: strips buffer facets & tiny wiggles so smoothing stays clean
+      var simp = poly;
+      try{ simp = turf.simplify(poly, { tolerance: 0.004, highQuality: true }); }catch(e){ simp = poly; }
+      var flat = turf.flatten(simp);              // split MultiPolygon into individual polygons
+      var out = [];
+      flat.features.forEach(function(pf){
+        try{
+          var s = turf.polygonSmooth(pf, { iterations: 3 });
+          out.push((s && s.features && s.features[0]) ? s.features[0] : pf);
+        }catch(e){ out.push(pf); }
+      });
+      return out.length === 1 ? out[0] : turf.featureCollection(out);
+    }catch(e){ return poly; }
+  }
+
+  /* ---------- render onto the map ---------- */
+  function renderLayers(){
+    ["area-fill","area-line","zip-dots"].forEach(function(l){ if(map.getLayer(l)) map.removeLayer(l); });
+    ["area-src","points-src"].forEach(function(s){ if(map.getSource(s)) map.removeSource(s); });
+
+    map.addSource("area-src", { type:"geojson", data:lastArea });
+    if($("fill").checked){
+      map.addLayer({ id:"area-fill", type:"fill", source:"area-src",
+        paint:{ "fill-color":$("lineColor").value, "fill-opacity":fillOpacity } });
+    }
+    map.addLayer({ id:"area-line", type:"line", source:"area-src",
+      layout:{ "line-cap":"round", "line-join":"round" },
+      paint:{ "line-color":$("lineColor").value, "line-width":parseFloat($("lineW").value), "line-opacity":0.95 } });
+
+    map.addSource("points-src", { type:"geojson", data:lastPoints });
+    if($("dots").checked){
+      map.addLayer({ id:"zip-dots", type:"circle", source:"points-src",
+        paint:{ "circle-radius":3.2, "circle-color":$("lineColor").value, "circle-stroke-width":1, "circle-stroke-color":"#fff", "circle-opacity":0.85 } });
+    }
+
+    // keep edit handles above the freshly re-added area layers
+    if(editing && map.getLayer("edit-handles")){ try{ map.moveLayer("edit-handles"); }catch(e){} }
+
+    if(!editing){
+      try{
+        var bb = turf.bbox(lastArea);
+        map.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]], { padding:80, duration:600 });
+      }catch(e){}
+    }
+  }
+
+  /* ---------- label overlay ---------- */
+  function syncLabel(){
+    var el = $("mapLabel");
+    el.textContent = ($("showLabel").checked ? ($("area").value || "") : "");
+  }
+  $("area").addEventListener("input", syncLabel);
+  $("showLabel").addEventListener("change", syncLabel);
+  $("fill").addEventListener("change", function(){ if(lastArea) renderLayers(); });
+  $("dots").addEventListener("change", function(){ if(lastArea) renderLayers(); });
+  $("lineColor").addEventListener("input", function(){ clearPreset(); if(lastArea) renderLayers(); });
+
+  /* ================= base-map resolution (incl. custom URLs) ================= */
+  // The <select> holds preset style ids; picking "custom" defers to the pasted URL.
+  function styleURL(){
+    var v = $("style").value;
+    if(v === "custom"){ return (($("customStyle").value)||"").trim(); }
+    return v;
+  }
+  function syncCustomStyle(){
+    $("customWrap").style.display = ($("style").value === "custom") ? "" : "none";
+  }
+  $("customStyle").addEventListener("change", function(){
+    saveSettings();
+    var url = styleURL();
+    if($("style").value === "custom" && map && url){ setStatus("Loading custom style…"); map.setStyle(url); }
+  });
+
+  /* ================= clean-map treatment ================= */
+  function isStandard(){ return ((styleURL())||"").indexOf("standard") > -1; }
+  // hide POI/transit clutter — keeps place + road labels. Works on the modern
+  // Standard style (config props) and classic styles (layer visibility).
+  function applyLook(){
+    if(!map) return;
+    var off = $("declutter").checked;
+    if(isStandard()){
+      ["showPointOfInterestLabels","showTransitLabels"].forEach(function(p){
+        try{ map.setConfigProperty("basemap", p, !off); }catch(e){}
+      });
+    } else {
+      try{
+        (map.getStyle().layers || []).forEach(function(l){
+          if(/poi|transit/i.test(l.id)){
+            try{ map.setLayoutProperty(l.id, "visibility", off ? "none" : "visible"); }catch(e){}
+          }
+        });
+      }catch(e){}
+    }
+  }
+  $("declutter").addEventListener("change", function(){ applyLook(); saveSettings(); });
+
+  // live base-map switching (no redraw needed)
+  $("style").addEventListener("change", function(){
+    clearPreset(); syncCustomStyle();
+    var url = styleURL();
+    if(map && url){ setStatus("Switching base map…"); map.setStyle(url); }
+  });
+
+  /* ================= quick-look presets ================= */
+  var M = "mapbox://styles/mapbox/";
+  var PRESETS = [
+    { id:"brandred", label:"Brand Red", dot:"#ff2d2d", style:M+"light-v11",          declutter:false, look:{lineColor:"#ff2d2d", lineW:4.5, fill:false, fillOp:0.14, smooth:true, dots:false} },
+    { id:"mono",     label:"Mono",      dot:"#14161b", style:M+"light-v11",          declutter:true,  look:{lineColor:"#14161b", lineW:3.5, fill:false, fillOp:0.10, smooth:true, dots:false} },
+    { id:"emerald",  label:"Emerald",   dot:"#12b886", style:M+"light-v11",          declutter:true,  look:{lineColor:"#0f9d6e", lineW:4.5, fill:true,  fillOp:0.10, smooth:true, dots:false} },
+    { id:"skyline",  label:"Skyline",   dot:"#2f6bff", style:M+"standard",           declutter:true,  look:{lineColor:"#2f6bff", lineW:5.0, fill:true,  fillOp:0.10, smooth:true, dots:false} },
+    { id:"midnight", label:"Midnight",  dot:"#ffb020", style:M+"dark-v11",           declutter:true,  look:{lineColor:"#ffb020", lineW:5.0, fill:true,  fillOp:0.12, smooth:true, dots:false} },
+    { id:"satellite",label:"Satellite", dot:"#ffffff", style:M+"standard-satellite", declutter:true,  look:{lineColor:"#ffffff", lineW:5.0, fill:false, fillOp:0.12, smooth:true, dots:false} }
+  ];
+  function renderPresets(){
+    var host = $("presets"); if(!host) return;
+    host.innerHTML = "";
+    PRESETS.forEach(function(p){
+      var b = document.createElement("button");
+      b.className = "preset" + (activePreset===p.id ? " on" : "");
+      b.innerHTML = '<span class="swatch" style="background:'+p.dot+'"></span>'+p.label;
+      b.addEventListener("click", function(){ applyPreset(p); });
+      host.appendChild(b);
+    });
+  }
+  function clearPreset(){ if(activePreset){ activePreset = ""; renderPresets(); } }
+  function applyPreset(p){
+    activePreset = p.id;
+    var lk = p.look;
+    $("lineColor").value = lk.lineColor;
+    $("lineW").value = lk.lineW; $("lineWVal").textContent = lk.lineW;
+    if(map && map.getLayer("area-line")) map.setPaintProperty("area-line","line-width",lk.lineW);
+    $("fill").checked = lk.fill;
+    fillOpacity = lk.fillOp;
+    $("smooth").checked = lk.smooth;
+    $("dots").checked = lk.dots;
+    $("declutter").checked = p.declutter;
+    var styleChanged = ($("style").value !== p.style);
+    $("style").value = p.style; syncCustomStyle();
+    renderPresets(); saveSettings();
+    if(map){
+      if(styleChanged){ setStatus("Applying “"+p.label+"”…"); map.setStyle(p.style); } // style.load → applyLook + renderLayers
+      else { applyLook(); if(lastArea) renderLayers(); }
+    }
+  }
+
+  /* ================= saved clients (server-backed via /api/clients) ================= */
+  var CLIENTS_API = "/api/clients";
+  var clientsCache = {};          // name -> client data, filled by the last successful fetch
+  var clientsLoaded = false;
+
+  function apiGetClients(){
+    return fetch(CLIENTS_API).then(function(r){
+      if(!r.ok) throw new Error("Server returned " + r.status);
+      return r.json();
+    }).then(function(d){ return d.clients || {}; });
+  }
+  function apiSaveClient(name, data){
+    return fetch(CLIENTS_API, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ name:name, data:data })
+    }).then(function(r){
+      if(!r.ok) return r.json().catch(function(){return {};}).then(function(j){ throw new Error(j.error || ("Server returned " + r.status)); });
+      return r.json();
+    });
+  }
+  function apiDeleteClient(name){
+    return fetch(CLIENTS_API + "?name=" + encodeURIComponent(name), { method:"DELETE" })
+      .then(function(r){ if(!r.ok) throw new Error("Server returned " + r.status); return r.json(); });
+  }
+
+  function populateClientSelect(sel){
+    var names = Object.keys(clientsCache).sort(function(a,b){ return a.toLowerCase()<b.toLowerCase()?-1:1; });
+    var s = $("clientSel");
+    s.innerHTML = '<option value="">— new / unsaved —</option>';
+    names.forEach(function(n){ var op=document.createElement("option"); op.value=n; op.textContent=n; s.appendChild(op); });
+    if(sel!=null) s.value = sel;
+    $("clientDel").disabled = !s.value;
+  }
+  // Pulls the full client list from the server. Called on boot and after any
+  // save/delete so every open tab converges on the same shared list.
+  function refreshClientList(sel){
+    $("clientSel").disabled = true;
+    return apiGetClients()
+      .then(function(o){ clientsCache = o; clientsLoaded = true; populateClientSelect(sel); })
+      .catch(function(err){
+        setStatus("Can't reach the saved-clients server (" + err.message + "). You can still draw &amp; export — saving/loading clients is unavailable.", "err");
+      })
+      .then(function(){ $("clientSel").disabled = false; });
+  }
+
+  $("clientSave").addEventListener("click", function(){
+    var name = $("area").value.trim();
+    if(!name){ setStatus("Name the area first — that becomes the client name.","err"); $("area").focus(); return; }
+    var data = {
+      area:name, zips:$("zips").value, style:$("style").value, customStyle:$("customStyle").value,
+      lineColor:$("lineColor").value, lineW:$("lineW").value,
+      fill:$("fill").checked, fillOp:fillOpacity, dots:$("dots").checked,
+      smooth:$("smooth").checked, showLabel:$("showLabel").checked,
+      declutter:$("declutter").checked, hull:hullType,
+      tight:$("tight").value, pad:$("pad").value, preset:activePreset,
+      srcMode:srcMode, states:(statesGeo?selectedStates():pendingStates),
+      centers:$("centers").value, radius:$("radius").value
+    };
+    var btn = $("clientSave"); btn.disabled = true;
+    setStatus("Saving “"+name+"”…");
+    apiSaveClient(name, data)
+      .then(function(){ return refreshClientList(name); })
+      .then(function(){ setStatus("Saved client “"+name+"”.","ok"); })
+      .catch(function(err){ setStatus("Couldn't save: " + err.message, "err"); })
+      .then(function(){ btn.disabled = false; });
+  });
+  $("clientDel").addEventListener("click", function(){
+    var name = $("clientSel").value; if(!name) return;
+    var btn = $("clientDel"); btn.disabled = true;
+    apiDeleteClient(name)
+      .then(function(){ return refreshClientList(""); })
+      .then(function(){ setStatus("Deleted “"+name+"”.","ok"); })
+      .catch(function(err){ setStatus("Couldn't delete: " + err.message, "err"); btn.disabled = false; });
+  });
+  $("clientSel").addEventListener("change", function(){
+    var name = this.value; $("clientDel").disabled = !name;
+    if(!name) return;
+    var c = clientsCache[name]; if(!c) return;
+    $("area").value = c.area || name;
+    $("zips").value = c.zips || "";
+    if(c.style) $("style").value = c.style;
+    if(c.customStyle!=null) $("customStyle").value = c.customStyle;
+    syncCustomStyle();
+    if(c.lineColor) $("lineColor").value = c.lineColor;
+    if(c.lineW){ $("lineW").value = c.lineW; $("lineWVal").textContent = c.lineW; }
+    $("fill").checked = !!c.fill; if(c.fillOp!=null) fillOpacity = c.fillOp;
+    $("dots").checked = !!c.dots; $("smooth").checked = c.smooth !== false;
+    if(typeof c.showLabel==="boolean") $("showLabel").checked = c.showLabel;
+    $("declutter").checked = !!c.declutter;
+    if(c.hull){ hullType = c.hull; syncSeg(); }
+    if(c.tight){ $("tight").value = c.tight; $("tightVal").textContent = c.tight+" mi"; }
+    if(c.pad!=null){ $("pad").value = c.pad; $("padVal").textContent = c.pad+" mi"; }
+    if(c.srcMode){ srcMode = c.srcMode; }
+    if(c.centers!=null) $("centers").value = c.centers;
+    if(c.radius){ $("radius").value = c.radius; $("radiusVal").textContent = c.radius+" mi"; }
+    if(c.states){
+      pendingStates = c.states;
+      if(statesGeo){
+        [].slice.call($("states").options).forEach(function(o){ o.selected = c.states.indexOf(o.value) > -1; });
+        syncStatesVal();
+      }
+    }
+    syncSrc();
+    if(srcMode==="states") ensureStates().catch(function(){});
+    activePreset = c.preset || ""; renderPresets(); syncLabel(); saveSettings();
+    if(map && c.style && c.style !== ($("style").value)){ /* style set above */ }
+    setStatus("Loaded “"+name+"”. Hit Draw area to map it.","ok");
+  });
+
+  /* ---------- status ---------- */
+  function setStatus(msg, cls){ var s=$("status"); s.textContent=msg||""; s.className="status"+(cls?" "+cls:""); }
+
+  /* ---------- draw ---------- */
+  /* ================= area source: zips | states | radius ================= */
+  function syncSrc(){
+    var btns = $("srcSeg").querySelectorAll("button");
+    for(var i=0;i<btns.length;i++){ btns[i].classList.toggle("on", btns[i].dataset.v===srcMode); }
+    $("srcZips").style.display   = srcMode==="zips"   ? "" : "none";
+    $("srcStates").style.display = srcMode==="states" ? "" : "none";
+    $("srcRadius").style.display = srcMode==="radius" ? "" : "none";
+    // hull/tightness only mean anything when wrapping scattered zip points;
+    // padding is meaningless for a radius (the radius *is* the size)
+    var hullField = $("hullSeg").closest(".field");
+    if(hullField) hullField.style.display = srcMode==="zips" ? "" : "none";
+    $("tightWrap").style.display = (srcMode==="zips" && hullType==="concave") ? "" : "none";
+    var padField = $("pad").closest(".field");
+    if(padField) padField.style.display = srcMode==="radius" ? "none" : "";
+  }
+  $("srcSeg").addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b) return;
+    srcMode = b.dataset.v; syncSrc(); saveSettings();
+    if(srcMode==="states") ensureStates().catch(function(err){ setStatus(err.message,"err"); });
+  });
+  $("radius").addEventListener("input", function(){ $("radiusVal").textContent = this.value+" mi"; });
+  $("radius").addEventListener("change", saveSettings);
+  $("centers").addEventListener("change", saveSettings);
+
+  /* ---------- states: real boundaries from us-atlas (TopoJSON) ---------- */
+  function selectedStates(){
+    return [].slice.call($("states").selectedOptions || []).map(function(o){ return o.value; });
+  }
+  function syncStatesVal(){ $("statesVal").textContent = selectedStates().length + " selected"; }
+  $("states").addEventListener("change", function(){ syncStatesVal(); saveSettings(); });
+
+  function ensureStates(){
+    if(statesGeo) return Promise.resolve(statesGeo);
+    setStatus("Loading state boundaries…");
+    return fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json")
+      .then(function(r){ if(!r.ok) throw new Error("Couldn't load state boundaries."); return r.json(); })
+      .then(function(topo){
+        statesGeo = topojson.feature(topo, topo.objects.states);
+        var keep = pendingStates || [];
+        var sel = $("states"); sel.innerHTML = "";
+        statesGeo.features.slice()
+          .sort(function(a,b){ return a.properties.name < b.properties.name ? -1 : 1; })
+          .forEach(function(f){
+            var o = document.createElement("option");
+            o.value = f.properties.name; o.textContent = f.properties.name;
+            if(keep.indexOf(f.properties.name) > -1) o.selected = true;
+            sel.appendChild(o);
+          });
+        syncStatesVal(); setStatus("");
+        return statesGeo;
+      });
+  }
+  function buildStatesArea(){
+    var names = selectedStates();
+    if(!names.length) throw new Error("Pick at least one state.");
+    var feats = statesGeo.features.filter(function(f){ return names.indexOf(f.properties.name) > -1; });
+    if(!feats.length) throw new Error("Couldn't match those states.");
+    var area = feats.length===1 ? feats[0] : turf.union(turf.featureCollection(feats));
+    var pad = parseFloat($("pad").value);
+    if(pad > 0) area = turf.buffer(area, pad, { units:"miles", steps:16 });
+    if($("smooth").checked) area = smoothPolygon(area);
+    var pts = [];
+    feats.forEach(function(f){ try{ pts.push(turf.centroid(f)); }catch(e){} });
+    return { area:area, points:turf.featureCollection(pts),
+             label: names.length+" state"+(names.length>1?"s":"") };
+  }
+
+  /* ---------- radius: centers + miles ---------- */
+  function geocodePlace(q, token){
+    return fetch("https://api.mapbox.com/search/geocode/v6/forward?q="+encodeURIComponent(q)+"&country=us&limit=1&access_token="+encodeURIComponent(token))
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){ var f = d && d.features && d.features[0]; return (f && f.geometry) ? f.geometry.coordinates : null; })
+      .catch(function(){ return null; });
+  }
+  function buildRadiusArea(token){
+    var lines = $("centers").value.split(/\n+/).map(function(s){ return s.trim(); }).filter(Boolean);
+    if(!lines.length) return Promise.reject(new Error("Add at least one center location."));
+    var miles = parseFloat($("radius").value);
+    setStatus("Locating "+lines.length+" center"+(lines.length>1?"s":"")+"…");
+    return Promise.all(lines.map(function(q){ return geocodePlace(q, token); })).then(function(coords){
+      var good = [], failed = [];
+      coords.forEach(function(c,i){ if(c) good.push(c); else failed.push(lines[i]); });
+      if(!good.length) throw new Error("Couldn't locate any of those places.");
+      var circles = good.map(function(c){ return turf.circle(c, miles, { steps:128, units:"miles" }); });
+      var area = circles.length===1 ? circles[0] : turf.union(turf.featureCollection(circles));
+      var pts = good.map(function(c){ return turf.point(c); });
+      return { area:area, points:turf.featureCollection(pts), failed:failed,
+               label: good.length+" center"+(good.length>1?"s":"")+"  ·  "+miles+" mi" };
+    });
+  }
+
+  /* ================= shape editing (drag the control cage) ================= */
+  // Handles are a simplified control polygon; the rendered outline is the Chaikin
+  // smoothing of it — so you drag a few points and still get the rounded blob look.
+  function ringsFrom(f){
+    var out = [];
+    try{
+      turf.flatten(f).features.forEach(function(pf){
+        var g = pf.geometry; if(!g || g.type !== "Polygon") return;
+        var r = g.coordinates[0].slice();
+        if(r.length > 1){
+          var a = r[0], b = r[r.length-1];
+          if(a[0]===b[0] && a[1]===b[1]) r.pop();   // keep rings open internally
+        }
+        if(r.length >= 3) out.push(r);
+      });
+    }catch(e){}
+    return out;
+  }
+  function featureFromRings(rings){
+    var polys = [];
+    (rings||[]).forEach(function(r){
+      if(r.length < 3) return;
+      var c = r.slice(); c.push(c[0]);
+      try{ polys.push(turf.polygon([c])); }catch(e){}
+    });
+    if(!polys.length) return null;
+    return polys.length===1 ? polys[0] : turf.featureCollection(polys);
+  }
+  function countVerts(f){
+    var n = 0;
+    try{ turf.flatten(f).features.forEach(function(pf){ n += pf.geometry.coordinates[0].length; }); }catch(e){}
+    return n;
+  }
+  // ~40 handles is the sweet spot: enough control to reshape, few enough to grab
+  function simplifyForEdit(f){
+    var cur = f, tol = 0.002;
+    for(var i=0; i<16 && countVerts(cur) > 44; i++){
+      try{ cur = turf.simplify(f, { tolerance:tol, highQuality:true }); }catch(e){ break; }
+      tol *= 1.6;
+    }
+    return cur;
+  }
+  function smoothOnly(f, iters){
+    try{
+      var out = [];
+      turf.flatten(f).features.forEach(function(pf){
+        try{ var s = turf.polygonSmooth(pf, { iterations:iters }); out.push((s && s.features && s.features[0]) || pf); }
+        catch(e){ out.push(pf); }
+      });
+      return out.length===1 ? out[0] : turf.featureCollection(out);
+    }catch(e){ return f; }
+  }
+  function editedArea(){
+    var f = featureFromRings(editRings);
+    if(!f) return null;
+    return $("smooth").checked ? smoothOnly(f, 2) : f;
+  }
+  function handleFC(){
+    var feats = [];
+    (editRings||[]).forEach(function(ring, ri){
+      ring.forEach(function(c, i){ feats.push(turf.point(c, { r:ri, i:i })); });
+    });
+    return turf.featureCollection(feats);
+  }
+  function refreshEdit(){
+    var a = editedArea(); if(!a) return;
+    lastArea = a;
+    if(map.getSource("area-src")) map.getSource("area-src").setData(lastArea);
+    if(map.getSource("edit-src")) map.getSource("edit-src").setData(handleFC());
+  }
+  function enterEdit(){
+    if(!lastArea || !map) return;
+    editRings = ringsFrom(simplifyForEdit(lastArea));
+    if(!editRings.length){ setStatus("This shape can't be edited.","err"); return; }
+    editing = true;
+    $("editToggle").textContent = "Done editing";
+    map.doubleClickZoom.disable();
+    if(map.getSource("edit-src")) map.getSource("edit-src").setData(handleFC());
+    else map.addSource("edit-src", { type:"geojson", data:handleFC() });
+    if(!map.getLayer("edit-handles")){
+      map.addLayer({ id:"edit-handles", type:"circle", source:"edit-src",
+        paint:{ "circle-radius":6, "circle-color":"#fff",
+                "circle-stroke-width":2.5, "circle-stroke-color":$("lineColor").value } });
+    }
+    refreshEdit();
+    setStatus("Drag handles to reshape · double-click one to delete · click the outline to add.","ok");
+  }
+  function exitEdit(silent){
+    editing = false;
+    $("editToggle").textContent = "Edit shape";
+    if(map){
+      map.doubleClickZoom.enable();
+      if(map.getLayer("edit-handles")) map.removeLayer("edit-handles");
+      if(map.getSource("edit-src")) map.removeSource("edit-src");
+    }
+    if(!silent) setStatus("Shape saved. Exports will use it.","ok");
+  }
+  $("editToggle").addEventListener("click", function(){ editing ? exitEdit() : enterEdit(); });
+  $("resetShape").addEventListener("click", function(){
+    if(!baseArea) return;
+    if(editing) exitEdit(true);
+    editRings = null; lastArea = baseArea;
+    renderLayers();
+    setStatus("Shape reset to the generated outline.","ok");
+  });
+  $("smooth").addEventListener("change", function(){ if(editing) refreshEdit(); });
+
+  // planar distance is plenty for picking the nearest segment at these scales
+  function segDist(p,a,b){
+    var dx=b[0]-a[0], dy=b[1]-a[1], L=dx*dx+dy*dy;
+    var t = L ? (((p[0]-a[0])*dx + (p[1]-a[1])*dy) / L) : 0;
+    t = Math.max(0, Math.min(1, t));
+    var cx=a[0]+t*dx, cy=a[1]+t*dy;
+    return Math.hypot(p[0]-cx, p[1]-cy);
+  }
+  function insertVertexNear(pt){
+    var best = null;
+    (editRings||[]).forEach(function(ring, ri){
+      for(var i=0;i<ring.length;i++){
+        var d = segDist(pt, ring[i], ring[(i+1)%ring.length]);
+        if(!best || d < best.d) best = { d:d, r:ri, i:i };
+      }
+    });
+    if(!best) return;
+    editRings[best.r].splice(best.i+1, 0, pt);
+    refreshEdit();
+  }
+  function wireEdit(){
+    map.on("mousedown", "edit-handles", function(e){
+      if(!editing) return;
+      e.preventDefault();
+      var p = e.features && e.features[0]; if(!p) return;
+      dragging = { r:p.properties.r, i:p.properties.i };
+      map.dragPan.disable();
+      map.getCanvas().style.cursor = "grabbing";
+    });
+    map.on("mousemove", function(e){
+      if(!editing || !dragging) return;
+      var ring = editRings[dragging.r]; if(!ring) return;
+      ring[dragging.i] = [e.lngLat.lng, e.lngLat.lat];
+      refreshEdit();
+    });
+    map.on("mouseup", function(){
+      if(!dragging) return;
+      dragging = null; map.dragPan.enable(); map.getCanvas().style.cursor = "";
+    });
+    map.on("mouseenter", "edit-handles", function(){ if(editing && !dragging) map.getCanvas().style.cursor = "grab"; });
+    map.on("mouseleave", "edit-handles", function(){ if(editing && !dragging) map.getCanvas().style.cursor = ""; });
+    map.on("dblclick", "edit-handles", function(e){
+      if(!editing) return;
+      e.preventDefault();
+      var p = e.features && e.features[0]; if(!p) return;
+      var ring = editRings[p.properties.r];
+      if(ring && ring.length > 4){ ring.splice(p.properties.i, 1); refreshEdit(); }
+      else setStatus("Each shape needs at least 4 handles.","err");
+    });
+    map.on("click", "area-line", function(e){
+      if(!editing || dragging) return;
+      // ignore clicks that landed on a handle (that's a drag/delete, not an insert)
+      if(map.queryRenderedFeatures(e.point, { layers:["edit-handles"] }).length) return;
+      insertVertexNear([e.lngLat.lng, e.lngLat.lat]);
+    });
+  }
+
+  /* ================= draw ================= */
+  function finishBuild(res){
+    if(!res.area) throw new Error("Couldn't build a shape from that.");
+    if(editing) exitEdit(true);
+    editRings = null;
+    lastArea = res.area; baseArea = res.area; lastPoints = res.points;
+    function paint(){
+      renderLayers(); syncLabel();
+      $("empty").style.display = "none";
+      $("badge").style.display = "block";
+      $("badge").textContent = res.label;
+    }
+    if(map.isStyleLoaded()) paint(); else map.once("idle", paint);
+    ["download","preview","record","editToggle","resetShape"].forEach(function(id){ $(id).disabled = false; });
+  }
+
+  $("draw").addEventListener("click", function(){
+    saveSettings();
+    var token = $("token").value.trim();
+    if(!token || token.indexOf("pk.")!==0){ setStatus("Enter a valid public token (pk.)","err"); return; }
+
+    var btn = $("draw");
+    var job;
+
+    if(srcMode === "zips"){
+      var zips = parseZips($("zips").value);
+      if(!zips.length){ setStatus("No 5-digit zip codes found in the box.","err"); return; }
+      if(!initMap()) return;
+      btn.disabled = true; btn.textContent = "Working…"; $("download").disabled = true;
+      setStatus("Geocoding "+zips.length+" zips… 0/"+zips.length);
+      job = geocodeAll(zips, token, function(done){ setStatus("Geocoding "+zips.length+" zips… "+done+"/"+zips.length); })
+        .then(function(r){
+          var n = Object.keys(r.coords).length;
+          if(n < 1) throw new Error("None of the zips could be located. Check the token has geocoding access.");
+          var b = buildArea(r.coords);
+          return { area:b.area, points:b.points,
+                   label: n+" zips" + (r.failed.length ? "  ·  "+r.failed.length+" not found" : ""),
+                   msg: "Mapped "+n+" zips." + (r.failed.length ? " Skipped "+r.failed.length+" (e.g. "+r.failed.slice(0,3).join(", ")+")." : "") };
+        });
+    } else if(srcMode === "states"){
+      if(!initMap()) return;
+      btn.disabled = true; btn.textContent = "Working…"; $("download").disabled = true;
+      job = ensureStates().then(function(){
+        var b = buildStatesArea(); b.msg = "Mapped "+b.label+"."; return b;
+      });
+    } else {
+      if(!initMap()) return;
+      btn.disabled = true; btn.textContent = "Working…"; $("download").disabled = true;
+      job = buildRadiusArea(token).then(function(b){
+        b.msg = "Mapped "+b.label+"." + (b.failed && b.failed.length ? " Couldn't find: "+b.failed.slice(0,3).join(", ")+"." : "");
+        return b;
+      });
+    }
+
+    job.then(function(res){ finishBuild(res); setStatus(res.msg || "Done.","ok"); })
+       .catch(function(err){ setStatus((err && err.message) || "Something went wrong.","err"); })
+       .then(function(){ btn.disabled = false; btn.textContent = "Draw area"; });
+  });
+
+  /* ================= high-res export plumbing ================= */
+
+  // target pixel dimensions from the Resolution + Format controls
+  function getExportDims(){
+    var LONG  = {"4k":3840,"1440":2560,"1080":1920}[$("vidRes").value] || 3840;
+    var SHORT = {"4k":2160,"1440":1440,"1080":1080}[$("vidRes").value] || 2160;
+    var fmt = $("vidFormat").value;
+    if(fmt === "vertical") return { w:SHORT, h:LONG };   // 2160×3840
+    if(fmt === "square")   return { w:SHORT, h:SHORT };  // 2160×2160
+    return { w:LONG, h:SHORT };                          // 3840×2160
+  }
+
+  // Resize the live map so its WebGL backing store is exactly the target 4K size.
+  // Key detail: we KEEP the real devicePixelRatio (>=2 on a Mac) and shrink the CSS
+  // size to target/dpr — so the backing store lands on 4K AND Mapbox still fetches
+  // crisp @2x tiles. (Forcing dpr to 1 would give exact pixels but half-res tiles.)
+  // Label cross-fades are disabled during capture so nothing flickers frame to frame.
+  function enterExportMode(w, h){
+    var mapEl = map.getContainer();
+    var stage = mapEl.parentNode;
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = Math.max(1, Math.round(w / dpr));
+    var cssH = Math.max(1, Math.round(h / dpr));
+    var saved = {
+      mapCss: mapEl.style.cssText,
+      stageOverflow: stage.style.overflow,
+      label: $("mapLabel").style.display,
+      badge: $("badge").style.display,
+      fade: map._fadeDuration
+    };
+    $("mapLabel").style.display = "none";
+    $("badge").style.display = "none";
+    try{ map._fadeDuration = 0; }catch(e){}
+
+    var scale = Math.min(stage.clientWidth / cssW, stage.clientHeight / cssH);
+    stage.style.overflow = "hidden";
+    mapEl.style.position = "absolute";
+    mapEl.style.top = "0"; mapEl.style.left = "0"; mapEl.style.right = "auto"; mapEl.style.bottom = "auto";
+    mapEl.style.width  = cssW + "px";
+    mapEl.style.height = cssH + "px";
+    mapEl.style.transformOrigin = "0 0";
+    mapEl.style.transform = "scale(" + scale + ")";
+    map.resize();
+
+    return function restore(){
+      mapEl.style.cssText = saved.mapCss;
+      stage.style.overflow = saved.stageOverflow;
+      $("mapLabel").style.display = saved.label;
+      $("badge").style.display = saved.badge;
+      try{ map._fadeDuration = saved.fade; }catch(e){}
+      map.resize();
+    };
+  }
+
+  // frame the coverage area for the current (export) viewport
+  function frameArea(w, h){
+    var bb = turf.bbox(lastArea);
+    var pad = Math.round(Math.min(w, h) * 0.08);
+    return map.cameraForBounds([[bb[0],bb[1]],[bb[2],bb[3]]], { padding: pad });
+  }
+
+  // Advance one frame and wait until EVERY tile for this exact camera is fully
+  // loaded before we let the caller capture it. This is what kills the two things
+  // that read as "not crisp / jittery": half-loaded blurry frames, and the flicker
+  // you get when some frames are sharp and the next is still streaming tiles.
+  function renderSettled(cap){
+    var maxWait = cap || 15000;
+    return new Promise(function(resolve){
+      var start = performance.now(), ticks = 0;
+      function tick(){
+        ticks++;
+        var ok = false;
+        try{ ok = map.areTilesLoaded() && map.loaded(); }catch(e){ ok = true; }
+        // require a few render cycles so freshly-requested tiles register as pending
+        if(ok && ticks >= 3){ resolve(); return; }
+        if(performance.now() - start > maxWait){ resolve(); return; }
+        map.once("render", tick);
+        map.triggerRepaint();
+      }
+      map.once("render", tick);
+      map.triggerRepaint();
+    });
+  }
+
+  function easeInOut(t){ return t*t*t*(t*(t*6-15)+10); } // smootherstep
+
+  function drawLabelOnCtx(ctx, w, h, name){
+    if(!name) return;
+    var fs = Math.round(w * 0.042);
+    ctx.font = "800 " + fs + "px Archivo, system-ui, sans-serif";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#fff";
+    ctx.shadowColor = "rgba(0,0,0,.55)";
+    ctx.shadowBlur = w * 0.012;
+    ctx.shadowOffsetY = w * 0.003;
+    ctx.fillText(name.toUpperCase(), w * 0.035, h * 0.045);
+    ctx.shadowColor = "transparent";
+  }
+
+  function safeName(){
+    return ($("area").value.trim() || "service-area").replace(/[^a-z0-9]+/gi,"-").replace(/^-|-$/g,"");
+  }
+  function downloadBlob(blob, ext){
+    var a = document.createElement("a");
+    a.download = safeName() + "-zoom." + ext;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+  }
+
+  /* ---------- export PNG at full resolution (map + name burned in) ---------- */
+  $("download").addEventListener("click", function(){
+    if(!map || !lastArea){ return; }
+    var dims = getExportDims(), W = dims.w, H = dims.h;
+    var btn = $("download"); btn.disabled = true;
+    setStatus("Rendering " + W + "×" + H + " PNG…");
+    var restore = enterExportMode(W, H);
+    (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve())
+      .catch(function(){})
+      .then(function(){
+        try{ map.jumpTo(frameArea(W, H)); }catch(e){}
+        return renderSettled();
+      })
+      .then(function(){
+        var src = map.getCanvas();
+        W = src.width; H = src.height;   // true backing size = crisp 1:1
+        var out = document.createElement("canvas");
+        out.width = W; out.height = H;
+        var ctx = out.getContext("2d");
+        ctx.drawImage(src, 0, 0);
+        if($("showLabel").checked){ drawLabelOnCtx(ctx, W, H, $("area").value.trim()); }
+        var a = document.createElement("a");
+        a.download = ($("area").value.trim() || "service-area").replace(/[^a-z0-9]+/gi,"-").replace(/^-|-$/g,"") + ".png";
+        a.href = out.toDataURL("image/png");
+        a.click();
+        setStatus("Saved " + W + "×" + H + " PNG.", "ok");
+      })
+      .catch(function(err){ setStatus((err && err.message) || "PNG export failed.", "err"); })
+      .then(function(){ restore(); btn.disabled = false; });
+  });
+
+  /* ---------- motion: cinematic zoom-in + video ---------- */
+  $("vidDur").addEventListener("input", function(){ $("vidDurVal").textContent = this.value+" s"; });
+  $("vidStart").addEventListener("input", function(){
+    var z = parseFloat(this.value);
+    $("vidStartVal").textContent = z <= 3 ? "continent" : (z <= 4 ? "region" : "state");
+  });
+
+  /* ---------- live preview (on-screen, real-time flyTo) ---------- */
+  function runPreview(){
+    if(!map || !lastArea){ setStatus("Draw an area first.","err"); return; }
+    var end;
+    try{
+      var bb = turf.bbox(lastArea);
+      end = map.cameraForBounds([[bb[0],bb[1]],[bb[2],bb[3]]], { padding: 140 });
+    }catch(e){ end = null; }
+    if(!end){ setStatus("Couldn't frame the area.","err"); return; }
+    var durMs = parseFloat($("vidDur").value) * 1000;
+    var startZoom = parseFloat($("vidStart").value);
+    var tilt = $("vidTilt").checked;
+
+    $("preview").disabled = true; $("record").disabled = true;
+    function reEnable(){ $("preview").disabled = false; $("record").disabled = false; }
+
+    map.jumpTo({ center: end.center, zoom: startZoom, bearing: 0, pitch: 0 });
+    map.once("idle", function(){
+      map.flyTo({ center:end.center, zoom:end.zoom, bearing:0, pitch:tilt?50:0,
+                  duration:durMs, curve:1.42, essential:true });
+      map.once("moveend", reEnable);
+    });
+    map.triggerRepaint();
+  }
+
+  /* ---------- record: deterministic frame-by-frame 4K encode ---------- */
+  // Instead of real-time screen capture (which yields variable-frame-rate WebM
+  // that stutters in editors), we advance the camera one exact frame at a time,
+  // wait for each frame to render crisply, and hand it to VideoEncoder with an
+  // explicit timestamp — producing a true constant-frame-rate MP4.
+
+  async function pickAvcCodec(w, h, fps){
+    var cands = ["avc1.640034","avc1.640033","avc1.64002A","avc1.4D4028","avc1.42E01E"];
+    for(var i=0;i<cands.length;i++){
+      try{
+        var s = await VideoEncoder.isConfigSupported({ codec:cands[i], width:w, height:h, bitrate:20000000, framerate:fps });
+        if(s && s.supported) return cands[i];
+      }catch(e){}
+    }
+    return null;
+  }
+
+  async function encodeWebCodecs(o){
+    var W=o.W, H=o.H, fps=o.fps;
+    var N = Math.max(2, Math.round(fps * o.durS));
+    var codec = await pickAvcCodec(W, H, fps);
+    if(!codec){ return encodeMediaRecorder(o); }  // no H.264 encoder → WebM fallback
+
+    // generous bitrate — satellite imagery is detail-heavy; give the encoder room
+    // so 4K stays crisp. ~45 Mbps at 4K30, ~90 at 4K60.
+    var bitrate = Math.min(150000000, Math.round(W * H * fps * 0.18));
+    var muxer = new Mp4Muxer.Muxer({
+      target: new Mp4Muxer.ArrayBufferTarget(),
+      fastStart: "in-memory",
+      video: { codec:"avc", width:W, height:H }
+    });
+    var encErr = null;
+    var encoder = new VideoEncoder({
+      output: function(chunk, meta){ muxer.addVideoChunk(chunk, meta); },
+      error: function(e){ encErr = e; }
+    });
+    encoder.configure({ codec:codec, width:W, height:H, bitrate:bitrate, framerate:fps, latencyMode:"quality" });
+
+    var cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    var ctx = cv.getContext("2d", { alpha:false });
+    var src = map.getCanvas();
+    var name = o.name;
+    var usPerFrame = Math.round(1e6 / fps);
+
+    for(var i=0;i<N;i++){
+      if(encErr) throw encErr;
+      var t = N === 1 ? 1 : i/(N-1);
+      var e = easeInOut(t);
+      var zoom = o.startZoom + (o.endZoom - o.startZoom) * e;
+      map.jumpTo({ center:o.center, zoom:zoom, pitch: o.tilt ? 50*e : 0, bearing:0 });
+      await renderSettled();   // block until this frame is fully loaded & crisp
+
+      ctx.drawImage(src, 0, 0, W, H);
+      if(name) drawLabelOnCtx(ctx, W, H, name);
+
+      var frame = new VideoFrame(cv, { timestamp: i * usPerFrame, duration: usPerFrame });
+      encoder.encode(frame, { keyFrame: (i % fps) === 0 });
+      frame.close();
+
+      while(encoder.encodeQueueSize > 6){ await new Promise(function(r){ setTimeout(r, 4); }); }
+      setStatus("Rendering " + W + "×" + H + " · " + fps + "fps — frame " + (i+1) + "/" + N + " (" + Math.round((i+1)/N*100) + "%)");
+    }
+
+    await encoder.flush();
+    if(encErr) throw encErr;
+    encoder.close();
+    muxer.finalize();
+    downloadBlob(new Blob([muxer.target.buffer], { type:"video/mp4" }), "mp4");
+    setStatus("Saved " + W + "×" + H + " · " + fps + "fps MP4. Drop it straight into your ad editor.", "ok");
+  }
+
+  // Fallback for browsers without WebCodecs/H.264: real-time capture, still at
+  // full 4K, muxed as WebM (convert to MP4 in the editor).
+  function encodeMediaRecorder(o){
+    return new Promise(function(resolve, reject){
+      if(typeof MediaRecorder === "undefined"){ reject(new Error("This browser can't export video. Use Chrome.")); return; }
+      var W=o.W, H=o.H, fps=o.fps;
+      var cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+      var ctx = cv.getContext("2d", { alpha:false });
+      var src = map.getCanvas();
+      var raf;
+      (function draw(){ ctx.drawImage(src,0,0,W,H); if(o.name) drawLabelOnCtx(ctx,W,H,o.name); raf = requestAnimationFrame(draw); })();
+
+      var stream = cv.captureStream(fps);
+      var mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9"
+               : (MediaRecorder.isTypeSupported("video/webm;codecs=vp8") ? "video/webm;codecs=vp8" : "video/webm");
+      var rec, chunks = [];
+      try{ rec = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond: Math.min(80000000, Math.round(W*H*fps*0.1)) }); }
+      catch(e){ cancelAnimationFrame(raf); reject(new Error("This browser can't record. Use Chrome.")); return; }
+      rec.ondataavailable = function(ev){ if(ev.data && ev.data.size) chunks.push(ev.data); };
+      rec.onstop = function(){
+        cancelAnimationFrame(raf);
+        downloadBlob(new Blob(chunks, { type:"video/webm" }), "webm");
+        setStatus("Saved " + W + "×" + H + " WebM (convert to MP4 in your editor).", "ok");
+        resolve();
+      };
+
+      map.jumpTo({ center:o.center, zoom:o.startZoom, pitch:0, bearing:0 });
+      map.once("idle", function(){
+        rec.start();
+        map.flyTo({ center:o.center, zoom:o.endZoom, pitch:o.tilt?50:0, bearing:0, duration:o.durS*1000, curve:1.42, essential:true });
+        map.once("moveend", function(){ setTimeout(function(){ if(rec.state !== "inactive") rec.stop(); }, 500); });
+      });
+      map.triggerRepaint();
+      setStatus("Recording " + W + "×" + H + "…");
+    });
+  }
+
+  async function recordVideo(){
+    if(!map || !lastArea){ setStatus("Draw an area first.","err"); return; }
+    var dims = getExportDims(), W = dims.w, H = dims.h;
+    var fps = parseInt(exportFps, 10) || 30;
+    var durS = parseFloat($("vidDur").value);
+    var startZoom = parseFloat($("vidStart").value);
+    var tilt = $("vidTilt").checked;
+    var name = ($("showLabel").checked ? $("area").value.trim() : "");
+
+    $("preview").disabled = true; $("record").disabled = true;
+    setStatus("Preparing " + W + "×" + H + " render…");
+    var restore = enterExportMode(W, H);
+
+    await new Promise(function(r){ setTimeout(r, 150); });   // let resize settle
+    await (document.fonts && document.fonts.ready ? document.fonts.ready.catch(function(){}) : Promise.resolve());
+
+    // capture at the true backing-store size so every frame is pixel-1:1 (no
+    // rescale = maximum sharpness); H.264 needs even dimensions.
+    var cvNow = map.getCanvas();
+    W = cvNow.width  - (cvNow.width  % 2);
+    H = cvNow.height - (cvNow.height % 2);
+
+    var end;
+    try{ end = frameArea(W, H); }catch(e){ end = null; }
+    if(!end){ restore(); setStatus("Couldn't frame the area.","err"); $("preview").disabled=false; $("record").disabled=false; return; }
+
+    var o = { W:W, H:H, fps:fps, durS:durS, startZoom:startZoom, endZoom:end.zoom, center:end.center, tilt:tilt, name:name };
+    try{
+      if(window.VideoEncoder && window.Mp4Muxer){ await encodeWebCodecs(o); }
+      else { await encodeMediaRecorder(o); }
+    }catch(err){
+      setStatus((err && err.message) || "Video export failed.", "err");
+    }finally{
+      restore();
+      $("preview").disabled = false; $("record").disabled = false;
+    }
+  }
+
+  $("preview").addEventListener("click", runPreview);
+  $("record").addEventListener("click", recordVideo);
+
+  /* ---------- boot ---------- */
+  loadSettings(); syncSeg(); syncFpsSeg(); syncLabel(); syncCustomStyle(); syncSrc();
+  renderPresets(); refreshClientList();
+  if(srcMode === "states") ensureStates().catch(function(){});
+  if($("token").value.trim().indexOf("pk.")===0){ initMap(); }
+})();
+</script>
+</body>
+</html>
