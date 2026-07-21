@@ -300,7 +300,12 @@
         </div>
 
         <div id="editTools" style="display:none">
-          <div class="field" style="margin-top:13px;margin-bottom:0">
+          <div class="field" style="margin-top:13px">
+            <div class="slabel"><label class="lab" style="margin:0">Handles</label><span class="val" id="handlesVal">24</span></div>
+            <input type="range" id="handles" min="6" max="60" step="1" value="24" />
+            <div class="hint">Fewer = easier to shape. Dragging this re-spaces them evenly around the outline.</div>
+          </div>
+          <div class="field" style="margin-bottom:0">
             <label class="lab">Click action</label>
             <div class="seg" id="editModeSeg">
               <button data-v="move" class="on">Move</button>
@@ -404,10 +409,16 @@
           <div class="field">
             <label class="lab" for="logoMode">Placement</label>
             <select id="logoMode">
-              <option value="float">Floating — pinned to the frame</option>
-              <option value="flat">Flat — lies on the area (tilts in 3D)</option>
-              <option value="pin">Pin — marker at area center</option>
+              <optgroup label="3D — sits in the scene">
+                <option value="billboard">Billboard — panel on a post</option>
+                <option value="pin3d">Pin — floating marker + stem</option>
+                <option value="flat">Flat — lies on the ground</option>
+              </optgroup>
+              <optgroup label="2D — pinned to the frame">
+                <option value="float">Floating watermark</option>
+              </optgroup>
             </select>
+            <div class="hint" id="logoModeHint">Billboard and Pin stand up in 3D — turn on <b>Cinematic tilt</b> in Motion to see them.</div>
           </div>
           <div class="field" id="logoPosWrap">
             <label class="lab" for="logoPos">Position</label>
@@ -418,6 +429,15 @@
               <option value="bl">Bottom left</option>
               <option value="c">Center</option>
             </select>
+          </div>
+          <div class="field" id="logoHeightWrap">
+            <div class="slabel"><label class="lab" style="margin:0">Height</label><span class="val" id="logoHeightVal">30%</span></div>
+            <input type="range" id="logoHeight" min="0" max="100" step="1" value="30" />
+            <div class="hint">How far it stands off the map.</div>
+          </div>
+          <div class="tog" id="logoShadowWrap">
+            <span>Ground shadow</span>
+            <label class="switch"><input type="checkbox" id="logoShadow" checked><span class="track"></span></label>
           </div>
           <div class="field">
             <div class="slabel"><label class="lab" style="margin:0">Size</label><span class="val" id="logoSizeVal">18%</span></div>
@@ -555,7 +575,10 @@
       logoMode: $("logoMode").value,
       logoPos: $("logoPos").value,
       logoSize: $("logoSize").value,
-      logoOp: $("logoOp").value
+      logoOp: $("logoOp").value,
+      logoHeight: $("logoHeight").value,
+      logoShadow: $("logoShadow").checked,
+      handles: $("handles").value
     };
     try{ localStorage.setItem(STORE, JSON.stringify(s)); }catch(e){}
   }
@@ -590,10 +613,13 @@
     if(s.tilt!=null) $("tilt").value = s.tilt;
     else if(s.vidTilt === true) $("tilt").value = 50;
     if(s.rot!=null) $("rot").value = s.rot;
-    if(s.logoMode) $("logoMode").value = s.logoMode;
+    if(s.logoMode) $("logoMode").value = (s.logoMode==="pin" ? "pin3d" : s.logoMode);
     if(s.logoPos) $("logoPos").value = s.logoPos;
     if(s.logoSize) $("logoSize").value = s.logoSize;
     if(s.logoOp) $("logoOp").value = s.logoOp;
+    if(s.logoHeight) $("logoHeight").value = s.logoHeight;
+    if(typeof s.logoShadow==="boolean") $("logoShadow").checked = s.logoShadow;
+    if(s.handles){ $("handles").value = s.handles; $("handlesVal").textContent = s.handles; }
     if(s.logo) setLogo(s.logo);
   }
 
@@ -948,14 +974,19 @@
        pin   — a symbol layer at the area centroid; stays upright, fixed screen size */
   function logoMode(){ return $("logoMode").value; }
 
+  function is3DLogo(){ var m = logoMode(); return m === "billboard" || m === "pin3d"; }
   function syncLogoUI(){
     var has = !!logoDataUrl;
     $("logoClear").disabled = !has;
     $("logoOpts").style.display = has ? "" : "none";
     $("logoPick").textContent = has ? "Replace image…" : "Choose image…";
-    $("logoPosWrap").style.display = (logoMode()==="float") ? "" : "none";
+    $("logoPosWrap").style.display    = (logoMode()==="float") ? "" : "none";
+    $("logoHeightWrap").style.display = is3DLogo() ? "" : "none";
+    $("logoShadowWrap").style.display = is3DLogo() ? "" : "none";
+    $("logoModeHint").style.display   = is3DLogo() ? "" : "none";
     $("logoSizeVal").textContent = $("logoSize").value + "%";
     $("logoOpVal").textContent = $("logoOp").value + "%";
+    $("logoHeightVal").textContent = $("logoHeight").value + "%";
     syncTags();
   }
 
@@ -1039,8 +1070,171 @@
     }catch(e){ return null; }
   }
 
+  /* ---------- 3D placements: a custom WebGL layer -----------------------------
+     Mapbox hands a custom layer the map's MVP matrix, so we can draw real
+     geometry in mercator space. Everything is sized in METRES, which means the
+     logo scales with the map (and stays correct in the 4K export) instead of
+     being a fixed-pixel sprite. The panel is camera-facing but stays upright,
+     so it reads like a physical board planted in the scene when you tilt.      */
+  var VERT_SRC =
+    "attribute vec3 a_pos; attribute vec2 a_uv; uniform mat4 u_matrix; varying vec2 v_uv;" +
+    "void main(){ v_uv = a_uv; gl_Position = u_matrix * vec4(a_pos, 1.0); }";
+  var FRAG_SRC =
+    "precision mediump float; uniform sampler2D u_tex; uniform float u_opacity;" +
+    "uniform vec4 u_color; uniform float u_useTex; varying vec2 v_uv;" +
+    "void main(){ vec4 c = u_useTex > 0.5 ? texture2D(u_tex, v_uv) : u_color;" +
+    " gl_FragColor = vec4(c.rgb, c.a * u_opacity); }";
+
+  function texFromCanvasOrImage(gl, src){
+    var t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    return t;
+  }
+  function shadowCanvas(){
+    var n = 128, cv = document.createElement("canvas"); cv.width = cv.height = n;
+    var c = cv.getContext("2d");
+    var g = c.createRadialGradient(n/2, n/2, 0, n/2, n/2, n/2);
+    g.addColorStop(0, "rgba(0,0,0,0.55)");
+    g.addColorStop(0.55, "rgba(0,0,0,0.20)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = g; c.fillRect(0, 0, n, n);
+    return cv;
+  }
+
+  // Camera-facing upright quad, centred on the area, spanning altitudes z0..z1
+  function vQuad(g, halfW, z0, z1){
+    var dx = g.rx*halfW*g.s, dy = g.ry*halfW*g.s;
+    var x = g.mc.x, y = g.mc.y, zb = z0*g.s, zt = z1*g.s;
+    return [ x-dx,y-dy,zt, 0,1,   x+dx,y+dy,zt, 1,1,   x+dx,y+dy,zb, 1,0,
+             x-dx,y-dy,zt, 0,1,   x+dx,y+dy,zb, 1,0,   x-dx,y-dy,zb, 0,0 ];
+  }
+  // Flat quad lying on the ground (shadow)
+  function gQuad(g, halfW, halfH){
+    var x = g.mc.x, y = g.mc.y, a = halfW*g.s, b = halfH*g.s;
+    return [ x-a,y-b,0, 0,1,   x+a,y-b,0, 1,1,   x+a,y+b,0, 1,0,
+             x-a,y-b,0, 0,1,   x+a,y+b,0, 1,0,   x-a,y+b,0, 0,0 ];
+  }
+
+  // Everything the renderer needs for this frame, in metres/mercator
+  function logo3DGeom(){
+    if(!lastArea) return null;
+    var c, bb;
+    try{ c = turf.centroid(lastArea).geometry.coordinates; bb = turf.bbox(lastArea); }catch(e){ return null; }
+    var midLat = (bb[1]+bb[3])/2;
+    var widthM;
+    try{ widthM = turf.distance([bb[0],midLat], [bb[2],midLat], { units:"kilometers" }) * 1000; }catch(e){ return null; }
+    if(!isFinite(widthM) || widthM <= 0) return null;
+    var mc = mapboxgl.MercatorCoordinate.fromLngLat(c, 0);
+    var s = mc.meterInMercatorCoordinateUnits();
+    var panelW = widthM * (parseFloat($("logoSize").value)/100) * 0.8;
+    var panelH = panelW / (logoAspect || 1);
+    var base = widthM * (parseFloat($("logoHeight").value)/100) * 0.30;
+    var bearing = ((map.getBearing()||0) * Math.PI) / 180;
+    return {
+      mc:mc, s:s,
+      rx: Math.cos(bearing), ry: Math.sin(bearing),   // screen-right in mercator
+      panelW:panelW, panelH:panelH, base:base, widthM:widthM
+    };
+  }
+
+  function makeLogo3DLayer(){
+    var prog, aPos, aUV, uMat, uTex, uOpacity, uColor, uUseTex, buf, tex, shTex, ready = false;
+    function compile(gl, type, src){
+      var sh = gl.createShader(type);
+      gl.shaderSource(sh, src); gl.compileShader(sh);
+      if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh) || "shader compile failed");
+      return sh;
+    }
+    return {
+      id: "logo-3d", type: "custom", renderingMode: "3d",
+      onAdd: function(m, gl){
+        try{
+          var vs = compile(gl, gl.VERTEX_SHADER, VERT_SRC);
+          var fs = compile(gl, gl.FRAGMENT_SHADER, FRAG_SRC);
+          prog = gl.createProgram();
+          gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+          if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || "link failed");
+          aPos = gl.getAttribLocation(prog, "a_pos");
+          aUV  = gl.getAttribLocation(prog, "a_uv");
+          uMat = gl.getUniformLocation(prog, "u_matrix");
+          uTex = gl.getUniformLocation(prog, "u_tex");
+          uOpacity = gl.getUniformLocation(prog, "u_opacity");
+          uColor = gl.getUniformLocation(prog, "u_color");
+          uUseTex = gl.getUniformLocation(prog, "u_useTex");
+          buf = gl.createBuffer();
+          if(logoImg) tex = texFromCanvasOrImage(gl, logoImg);
+          shTex = texFromCanvasOrImage(gl, shadowCanvas());
+          ready = !!tex;
+        }catch(err){ ready = false; }
+      },
+      onRemove: function(m, gl){
+        try{
+          if(buf) gl.deleteBuffer(buf);
+          if(tex) gl.deleteTexture(tex);
+          if(shTex) gl.deleteTexture(shTex);
+          if(prog) gl.deleteProgram(prog);
+        }catch(e){}
+        ready = false;
+      },
+      render: function(gl, matrix){
+        if(!ready || !logoImg || !lastArea) return;
+        var mode = logoMode();
+        if(mode !== "billboard" && mode !== "pin3d") return;
+        var g = logo3DGeom(); if(!g) return;
+        var op = parseFloat($("logoOp").value)/100;
+
+        gl.useProgram(prog);
+        gl.uniformMatrix4fv(uMat, false, matrix);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);          // translucent: test depth, don't write it
+
+        function draw(verts, texture, color, opacity){
+          gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.DYNAMIC_DRAW);
+          gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 20, 0);
+          gl.enableVertexAttribArray(aUV);  gl.vertexAttribPointer(aUV,  2, gl.FLOAT, false, 20, 12);
+          if(texture){
+            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.uniform1i(uTex, 0); gl.uniform1f(uUseTex, 1);
+          } else {
+            gl.uniform1f(uUseTex, 0); gl.uniform4fv(uColor, color);
+          }
+          gl.uniform1f(uOpacity, opacity);
+          gl.drawArrays(gl.TRIANGLES, 0, verts.length/5);
+        }
+
+        // 1 · ground shadow, squashed so it reads as lying flat
+        if($("logoShadow").checked){
+          var sw = g.panelW * 0.5;
+          draw(gQuad(g, sw, sw*0.5), shTex, null, op*0.85);
+        }
+        // 2 · post (billboard) or thin stem (pin)
+        if(g.base > 0){
+          var isBb = (mode === "billboard");
+          draw(vQuad(g, g.panelW*(isBb ? 0.045 : 0.014), 0, g.base + g.panelH*0.04),
+               null, isBb ? [0.17,0.18,0.21,1] : [0.11,0.12,0.14,1], op);
+        }
+        // 3 · white backing board behind the logo
+        var pad = g.panelW * (mode === "billboard" ? 0.06 : 0.04);
+        draw(vQuad(g, g.panelW/2 + pad, g.base - pad, g.base + g.panelH + pad),
+             null, [1,1,1,0.96], op);
+        // 4 · the logo itself
+        draw(vQuad(g, g.panelW/2, g.base, g.base + g.panelH), tex, null, op);
+
+        gl.depthMask(true);
+      }
+    };
+  }
+
   function removeLogoLayers(){
-    ["logo-flat","logo-pin"].forEach(function(l){ try{ if(map.getLayer(l)) map.removeLayer(l); }catch(e){} });
+    ["logo-flat","logo-pin","logo-3d"].forEach(function(l){ try{ if(map.getLayer(l)) map.removeLayer(l); }catch(e){} });
     ["logo-flat-src","logo-pin-src"].forEach(function(s){ try{ if(map.getSource(s)) map.removeSource(s); }catch(e){} });
   }
 
@@ -1058,26 +1252,11 @@
           paint:{ "raster-opacity":op, "raster-fade-duration":0 } },
           map.getLayer("area-line") ? "area-line" : undefined);
       }catch(e){}
-    } else if(mode === "pin"){
-      if(!logoImg) return;
-      try{
-        if(map.hasImage("logo-icon")) map.removeImage("logo-icon");
-        map.addImage("logo-icon", logoImg);
-      }catch(e){ return; }
-      var c; try{ c = turf.centroid(lastArea); }catch(e){ return; }
-      // icon-size is a multiplier on the image's own pixel size; derive it from the
-      // CSS width so the logo keeps the same relative size at 4K export
-      var cssW = map.getCanvas().clientWidth || 800;
-      var target = cssW * (parseFloat($("logoSize").value)/100);
-      var iconSize = target / (logoImg.naturalWidth || 512);
-      try{
-        map.addSource("logo-pin-src", { type:"geojson", data:turf.featureCollection([c]) });
-        map.addLayer({ id:"logo-pin", type:"symbol", source:"logo-pin-src",
-          layout:{ "icon-image":"logo-icon", "icon-size":iconSize,
-                   "icon-allow-overlap":true, "icon-ignore-placement":true, "icon-anchor":"center" },
-          paint:{ "icon-opacity":op } });
-      }catch(e){}
+    } else if(mode === "billboard" || mode === "pin3d"){
+      try{ map.addLayer(makeLogo3DLayer()); }
+      catch(e){ setStatus("This browser couldn't start the 3D logo layer.","err"); }
     }
+    try{ map.triggerRepaint(); }catch(e){}
   }
 
   // burned into PNG + every video frame (float mode only — the others are on the map)
@@ -1120,12 +1299,19 @@
     saveSettings();
   });
   $("logoPos").addEventListener("change", function(){ syncFloatOverlay(); saveSettings(); });
-  ["logoSize","logoOp"].forEach(function(id){
+  $("logoShadow").addEventListener("change", function(){
+    if(map) map.triggerRepaint();
+    saveSettings();
+  });
+  ["logoSize","logoOp","logoHeight"].forEach(function(id){
     $(id).addEventListener("input", function(){
       $("logoSizeVal").textContent = $("logoSize").value + "%";
       $("logoOpVal").textContent = $("logoOp").value + "%";
+      $("logoHeightVal").textContent = $("logoHeight").value + "%";
       syncFloatOverlay();
-      if(map) renderLogoLayers();
+      // 3D geometry is rebuilt every frame from these values, so a repaint is
+      // all that's needed — no layer teardown.
+      if(map){ if(is3DLogo()) map.triggerRepaint(); else renderLogoLayers(); }
     });
     $(id).addEventListener("change", saveSettings);
   });
@@ -1190,7 +1376,8 @@
       centers:$("centers").value, radius:$("radius").value,
       glow:glowAmt, island:islandPct, tilt:$("tilt").value, rot:$("rot").value,
       logo:logoDataUrl, logoMode:$("logoMode").value, logoPos:$("logoPos").value,
-      logoSize:$("logoSize").value, logoOp:$("logoOp").value
+      logoSize:$("logoSize").value, logoOp:$("logoOp").value,
+      logoHeight:$("logoHeight").value, logoShadow:$("logoShadow").checked, handles:$("handles").value
     };
     var btn = $("clientSave"); btn.disabled = true;
     setStatus("Saving “"+name+"”…");
@@ -1240,10 +1427,13 @@
     if(c.island!=null){ islandPct = c.island; $("island").value = islandPct; $("islandVal").textContent = islandPct ? ("< "+islandPct+"%") : "off"; }
     if(c.tilt!=null){ $("tilt").value = c.tilt; $("tiltVal").textContent = parseFloat(c.tilt) ? c.tilt+"°" : "off"; }
     if(c.rot!=null){ $("rot").value = c.rot; $("rotVal").textContent = c.rot+"°"; }
-    if(c.logoMode) $("logoMode").value = c.logoMode;
+    if(c.logoMode) $("logoMode").value = (c.logoMode==="pin" ? "pin3d" : c.logoMode);
     if(c.logoPos) $("logoPos").value = c.logoPos;
     if(c.logoSize) $("logoSize").value = c.logoSize;
     if(c.logoOp) $("logoOp").value = c.logoOp;
+    if(c.logoHeight) $("logoHeight").value = c.logoHeight;
+    if(typeof c.logoShadow==="boolean") $("logoShadow").checked = c.logoShadow;
+    if(c.handles){ $("handles").value = c.handles; $("handlesVal").textContent = c.handles; }
     setLogo(c.logo || "");
     syncSrc(); syncStyleReadouts();
     if(srcMode==="states") ensureStates().catch(function(){});
@@ -1395,14 +1585,41 @@
     try{ turf.flatten(f).features.forEach(function(pf){ n += pf.geometry.coordinates[0].length; }); }catch(e){}
     return n;
   }
-  // ~40 handles is the sweet spot: enough control to reshape, few enough to grab
-  function simplifyForEdit(f){
-    var cur = f, tol = 0.002;
-    for(var i=0; i<16 && countVerts(cur) > 44; i++){
-      try{ cur = turf.simplify(f, { tolerance:tol, highQuality:true }); }catch(e){ break; }
-      tol *= 1.6;
+  // Walk a ring's perimeter and drop `n` points at equal arc-length intervals.
+  // Douglas-Peucker (turf.simplify) spends its whole budget on high-curvature
+  // spots, so after smoothing it piles every handle onto the rounded corners and
+  // leaves the straight runs bare. Even spacing is what actually makes a cage
+  // easy to grab and reshape.
+  function resampleRing(ring, n){
+    if(!ring || ring.length < 3) return (ring||[]).slice();
+    var pts = ring.slice(); pts.push(ring[0]);
+    var segs = [], total = 0, i;
+    for(i=0; i<pts.length-1; i++){
+      var d = Math.hypot(pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1]);
+      segs.push(d); total += d;
     }
-    return cur;
+    if(!total) return ring.slice();
+    var out = [], step = total/n, acc = 0, si = 0;
+    for(var k=0; k<n; k++){
+      var target = k*step;
+      while(si < segs.length-1 && acc + segs[si] < target){ acc += segs[si]; si++; }
+      var t = segs[si] ? (target-acc)/segs[si] : 0;
+      out.push([ pts[si][0] + (pts[si+1][0]-pts[si][0])*t,
+                 pts[si][1] + (pts[si+1][1]-pts[si][1])*t ]);
+    }
+    return out;
+  }
+
+  function handleTarget(){ return parseInt($("handles").value, 10) || 24; }
+
+  // Build an evenly-spaced control cage. Many pieces share the budget so a
+  // multi-island shape doesn't spawn hundreds of handles.
+  function buildCage(area){
+    var rings = ringsFrom(area);
+    if(!rings.length) return [];
+    var n = handleTarget();
+    var per = rings.length > 6 ? Math.max(8, Math.round(n/2)) : n;
+    return rings.map(function(r){ return resampleRing(r, Math.max(8, Math.min(per, r.length > 3 ? per : r.length))); });
   }
   function smoothOnly(f, iters){
     try{
@@ -1453,7 +1670,10 @@
 
   function enterEdit(){
     if(!lastArea || !map) return;
-    editRings = ringsFrom(simplifyForEdit(lastArea));
+    // Reuse the existing cage if we still have one. Re-deriving it from the
+    // rendered (smoothed) outline is what used to shuffle handles onto the
+    // corners every time you saved and re-opened.
+    if(!editRings || !editRings.length) editRings = buildCage(lastArea);
     if(!editRings.length){ setStatus("This shape can't be edited.","err"); return; }
     editing = true;
     editMode = "move";
@@ -1469,7 +1689,8 @@
     }
     syncEditModeSeg();
     refreshEdit();
-    setStatus(editRings.length + " piece" + (editRings.length>1?"s":"") + " · drag handles to reshape.","ok");
+    var nh = editRings.reduce(function(a,r){ return a + r.length; }, 0);
+    setStatus(nh + " handles across " + editRings.length + " piece" + (editRings.length>1?"s":"") + " · drag to reshape.","ok");
   }
   function exitEdit(silent){
     editing = false;
@@ -1492,6 +1713,18 @@
     setStatus("Shape reset to the generated outline.","ok");
   });
   $("smooth").addEventListener("change", function(){ if(editing) refreshEdit(); });
+
+  // Re-space the cage live. Resamples the cage the user is actually working on,
+  // not the smoothed render, so their edits survive a density change.
+  $("handles").addEventListener("input", function(){
+    $("handlesVal").textContent = this.value;
+    if(!editing || !editRings) return;
+    var n = handleTarget();
+    var per = editRings.length > 6 ? Math.max(8, Math.round(n/2)) : n;
+    editRings = editRings.map(function(r){ return resampleRing(r, Math.max(6, per)); });
+    refreshEdit();
+  });
+  $("handles").addEventListener("change", saveSettings);
 
   /* ---------- drop disconnected islands (states pick up a lot of these) ---------- */
   function dropSmallPieces(f, pct){
