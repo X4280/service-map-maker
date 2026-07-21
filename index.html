@@ -26,34 +26,67 @@
     --red:#ff2d2d;
     --red-soft:rgba(255,45,45,.14);
     --accent:#ffb020;
+    --shadow:rgba(0,0,0,.45);
     --radius:9px;
     --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
     --sans:"Archivo",system-ui,-apple-system,sans-serif;
+  }
+  :root[data-theme="light"]{
+    --bg:#e9ebef;
+    --panel:#ffffff;
+    --panel-2:#f2f4f7;
+    --line:#e0e3e9;
+    --ink:#14161b;
+    --ink-dim:#5b616b;
+    --ink-faint:#8a909a;
+    --shadow:rgba(20,22,27,.16);
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
   body{
     font-family:var(--sans);
     background:var(--bg);color:var(--ink);
-    display:grid;grid-template-columns:360px 1fr;height:100vh;overflow:hidden;
+    display:grid;grid-template-columns:330px 1fr 330px;height:100vh;overflow:hidden;
   }
-  /* ---------- control panel ---------- */
+  /* ---------- control panels ---------- */
   .panel{
-    background:var(--panel);border-right:1px solid var(--line);
+    background:var(--panel);
     display:flex;flex-direction:column;min-height:0;
   }
+  .panel-left{border-right:1px solid var(--line)}
+  .panel-right{border-left:1px solid var(--line)}
   .brand{
-    padding:20px 22px 16px;border-bottom:1px solid var(--line);
+    padding:18px 20px 15px;border-bottom:1px solid var(--line);
+    display:flex;align-items:flex-start;gap:10px;
   }
+  .brand .bt{flex:1;min-width:0}
   .brand h1{
-    font-size:19px;font-weight:800;letter-spacing:-.01em;margin:0;
+    font-size:17px;font-weight:800;letter-spacing:-.01em;margin:0;
     text-transform:uppercase;line-height:1;
   }
   .brand h1 .dot{color:var(--red)}
-  .brand p{margin:7px 0 0;font-size:11.5px;color:var(--ink-faint);font-family:var(--mono);letter-spacing:.02em}
-  .scroll{overflow-y:auto;padding:18px 22px 10px;flex:1;min-height:0}
+  .brand p{margin:6px 0 0;font-size:11px;color:var(--ink-faint);font-family:var(--mono);letter-spacing:.02em}
+  .themebtn{
+    flex:none;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:14px;line-height:1;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim);transition:.12s;
+  }
+  .themebtn:hover{color:var(--ink);border-color:var(--ink-dim)}
+  .rhead{
+    padding:18px 20px 15px;border-bottom:1px solid var(--line);
+    font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-dim);
+  }
+  .scroll{overflow-y:auto;padding:16px 20px 14px;flex:1;min-height:0}
   .scroll::-webkit-scrollbar{width:9px}
   .scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+
+  /* right-panel drawer toggle (narrow screens only) */
+  .rp-toggle{
+    display:none;position:absolute;top:20px;right:20px;z-index:12;
+    background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    border-radius:9px;padding:9px 13px;cursor:pointer;font-family:var(--mono);
+    font-size:11px;text-transform:uppercase;letter-spacing:.07em;box-shadow:0 6px 20px var(--shadow);
+  }
+  .rp-toggle:hover{border-color:var(--ink-dim)}
 
   .field{margin-bottom:17px}
   label.lab{
@@ -197,19 +230,35 @@
     color:var(--ink);background:rgba(12,13,15,.72);border:1px solid var(--line);
     padding:7px 11px;border-radius:7px;backdrop-filter:blur(6px);display:none;
   }
+  /* Below 1180px the appearance panel becomes a slide-over drawer so the map
+     keeps its width — this tool is mostly used to eyeball the map. */
+  @media (max-width:1180px){
+    body{grid-template-columns:320px 1fr}
+    .panel-right{
+      position:fixed;top:0;right:0;bottom:0;width:330px;z-index:20;
+      transform:translateX(100%);transition:transform .18s ease;
+      box-shadow:-18px 0 44px var(--shadow);
+    }
+    body.rp-open .panel-right{transform:none}
+    .rp-toggle{display:block}
+  }
   @media (max-width:820px){
     body{grid-template-columns:1fr;grid-template-rows:auto 1fr}
-    .panel{max-height:52vh}
+    .panel-left{max-height:46vh}
+    .panel-right{width:88vw}
     .arealabel{font-size:26px}
   }
 </style>
 </head>
 <body>
 
-<aside class="panel">
+<aside class="panel panel-left">
   <div class="brand">
-    <h1>Service Area<span class="dot">.</span>Mapper</h1>
-    <p>zips &rarr; red coverage blob</p>
+    <div class="bt">
+      <h1>Service Area<span class="dot">.</span>Mapper</h1>
+      <p>zips &middot; states &middot; radius &rarr; 4K ads</p>
+    </div>
+    <button class="themebtn" id="themeBtn" title="Toggle light / dark">&#9788;</button>
   </div>
 
   <div class="scroll">
@@ -270,6 +319,32 @@
         </div>
       </div>
     </details>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="draw">Draw area</button>
+    <button class="btn btn-ghost" id="download" disabled>Download PNG</button>
+    <div class="status" id="status"></div>
+  </div>
+</aside>
+
+<main class="stage">
+  <div id="map"></div>
+  <div class="arealabel" id="mapLabel"></div>
+  <img id="logoOverlay" alt="" />
+  <div class="badge" id="badge"></div>
+  <button class="rp-toggle" id="rpToggle">Style</button>
+  <div class="empty" id="empty">
+    <div>
+      <h2>Drop in a token &amp; some zips</h2>
+      <p>Paste your Mapbox <span class="k">pk.</span> token and a list of zip codes, then hit <b>Draw area</b>. It geocodes each zip, wraps them in a coverage outline, and exports clean 4K stills and video.</p>
+    </div>
+  </div>
+</main>
+
+<aside class="panel panel-right">
+  <div class="rhead">Appearance</div>
+  <div class="scroll">
 
     <details class="sec" id="secShape">
       <summary><span class="chev">&#9654;</span>Shape<span class="tag" id="shapeTag"></span></summary>
@@ -497,36 +572,74 @@
       <summary><span class="chev">&#9654;</span>Markers<span class="tag" id="markersTag"></span></summary>
       <div class="secbody">
         <div class="field">
-          <label class="lab" for="markerStyle">Style</label>
-          <select id="markerStyle">
-            <option value="label">Callout box + text</option>
-            <option value="text">Text only</option>
-            <option value="dot">Dot + text</option>
-            <option value="logo">Your logo (3D)</option>
-          </select>
+          <label class="lab">Presets</label>
+          <div class="presets" id="markerPresets"></div>
         </div>
+
         <div class="field">
           <label class="lab" for="markerPlace">Add by place</label>
           <div class="clientrow">
             <input type="text" id="markerPlace" placeholder="Orange County, CA" spellcheck="false" />
             <button class="iconbtn" id="markerAdd" title="Add marker">+</button>
           </div>
+          <div class="hint">Use <b>\n</b> in a label for a second line.</div>
         </div>
         <button class="btn btn-ghost" id="markerPick" style="margin-top:0">Click map to place</button>
-
-        <div class="field" style="margin-top:15px">
-          <div class="slabel"><label class="lab" style="margin:0">Text size</label><span class="val" id="markerSizeVal">16px</span></div>
-          <input type="range" id="markerSize" min="10" max="40" step="1" value="16" />
-        </div>
-        <div class="tog">
-          <span>Dark style</span>
-          <label class="switch"><input type="checkbox" id="markerDark"><span class="track"></span></label>
-        </div>
 
         <div class="field" style="margin-top:15px;margin-bottom:0">
           <label class="lab">Placed markers</label>
           <div id="markerList"></div>
           <button class="btn btn-ghost" id="markersClear" style="margin-top:10px">Clear all</button>
+        </div>
+
+        <div class="divider" style="margin:17px 0"></div>
+
+        <div class="field">
+          <label class="lab" for="markerStyle">Shape</label>
+          <select id="markerStyle">
+            <option value="pill">Pill + pointer</option>
+            <option value="pinLabel">Pin + label</option>
+            <option value="pin">Pin only</option>
+            <option value="text">Text only</option>
+            <option value="logo">Your logo (3D)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="lab" for="markerFont">Font</label>
+          <select id="markerFont">
+            <option value="archivo">Archivo — bold &amp; wide</option>
+            <option value="system">System sans</option>
+            <option value="mono">IBM Plex Mono</option>
+            <option value="serif">Georgia serif</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="lab">Colours</label>
+          <div class="colorrow">
+            <input type="color" id="markerFill" value="#14161b" title="Background / pin" />
+            <input type="color" id="markerText" value="#ffffff" title="Text" />
+            <button class="btn btn-ghost" id="markerBrand" style="margin-top:0;flex:1;padding:8px">Use brand colour</button>
+          </div>
+        </div>
+        <div class="field">
+          <div class="slabel"><label class="lab" style="margin:0">Text size</label><span class="val" id="markerSizeVal">17px</span></div>
+          <input type="range" id="markerSize" min="10" max="46" step="1" value="17" />
+        </div>
+        <div class="field">
+          <div class="slabel"><label class="lab" style="margin:0">Corner radius</label><span class="val" id="markerRadiusVal">9</span></div>
+          <input type="range" id="markerRadius" min="0" max="30" step="1" value="9" />
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <div class="slabel"><label class="lab" style="margin:0">Letter spacing</label><span class="val" id="markerTrackVal">0.6</span></div>
+          <input type="range" id="markerTrack" min="0" max="4" step="0.1" value="0.6" />
+        </div>
+        <div class="tog">
+          <span>Bold</span>
+          <label class="switch"><input type="checkbox" id="markerBold" checked><span class="track"></span></label>
+        </div>
+        <div class="tog">
+          <span>UPPERCASE</span>
+          <label class="switch"><input type="checkbox" id="markerUpper" checked><span class="track"></span></label>
         </div>
       </div>
     </details>
@@ -610,26 +723,7 @@
       </div>
     </details>
   </div>
-
-  <div class="actions">
-    <button class="btn btn-primary" id="draw">Draw area</button>
-    <button class="btn btn-ghost" id="download" disabled>Download PNG</button>
-    <div class="status" id="status"></div>
-  </div>
 </aside>
-
-<main class="stage">
-  <div id="map"></div>
-  <div class="arealabel" id="mapLabel"></div>
-  <img id="logoOverlay" alt="" />
-  <div class="badge" id="badge"></div>
-  <div class="empty" id="empty">
-    <div>
-      <h2>Drop in a token &amp; some zips</h2>
-      <p>Paste your Mapbox <span class="k">pk.</span> token and a list of zip codes, then hit <b>Draw area</b>. It geocodes each zip, wraps them in a red coverage outline, and lets you export a clean PNG.</p>
-    </div>
-  </div>
-</main>
 
 <script>
 (function(){
@@ -684,7 +778,14 @@
       markers: markers,
       markerStyle: $("markerStyle").value,
       markerSize: $("markerSize").value,
-      markerDark: $("markerDark").checked,
+      markerFont: $("markerFont").value,
+      markerFill: $("markerFill").value,
+      markerText: $("markerText").value,
+      markerRadius: $("markerRadius").value,
+      markerTrack: $("markerTrack").value,
+      markerBold: $("markerBold").checked,
+      markerUpper: $("markerUpper").checked,
+      markerPreset: activeMarkerPreset,
       strokeAnim: $("strokeAnim").checked,
       strokeStart: $("strokeStart").value,
       strokeSpan: $("strokeSpan").value
@@ -735,10 +836,20 @@
     if(s.logoGlow!=null) $("logoGlow").value = s.logoGlow;
     if(typeof s.logoFaceCam==="boolean") $("logoFaceCam").checked = s.logoFaceCam;
     if(s.logoTiles) $("logoTiles").value = s.logoTiles;
-    if(Array.isArray(s.markers)) markers = s.markers;
-    if(s.markerStyle) $("markerStyle").value = s.markerStyle;
-    if(s.markerSize){ $("markerSize").value = s.markerSize; $("markerSizeVal").textContent = s.markerSize+"px"; }
-    if(typeof s.markerDark==="boolean") $("markerDark").checked = s.markerDark;
+    if(Array.isArray(s.markers)) markers = s.markers.map(function(m){
+      if(m && (m.style==="label" || m.style==="dot")) m.style = "pill";
+      return m;
+    });
+    if(s.markerStyle) $("markerStyle").value = (s.markerStyle==="label"||s.markerStyle==="dot") ? "pill" : s.markerStyle;
+    if(s.markerSize) $("markerSize").value = s.markerSize;
+    if(s.markerFont) $("markerFont").value = s.markerFont;
+    if(s.markerFill) $("markerFill").value = s.markerFill;
+    if(s.markerText) $("markerText").value = s.markerText;
+    if(s.markerRadius!=null) $("markerRadius").value = s.markerRadius;
+    if(s.markerTrack!=null) $("markerTrack").value = s.markerTrack;
+    if(typeof s.markerBold==="boolean") $("markerBold").checked = s.markerBold;
+    if(typeof s.markerUpper==="boolean") $("markerUpper").checked = s.markerUpper;
+    if(s.markerPreset) activeMarkerPreset = s.markerPreset;
     if(typeof s.strokeAnim==="boolean") $("strokeAnim").checked = s.strokeAnim;
     if(s.strokeStart!=null) $("strokeStart").value = s.strokeStart;
     if(s.strokeSpan!=null) $("strokeSpan").value = s.strokeSpan;
@@ -779,7 +890,7 @@
 
   /* ---------- map ---------- */
   var map = null, lastArea = null, lastPoints = null;
-  var fillOpacity = 0.14, activePreset = "", glowAmt = 0;
+  var fillOpacity = 0.14, activePreset = "", glowAmt = 0, activeMarkerPreset = "";
   var srcMode = "zips", pendingStates = [], statesGeo = null;
   var editing = false, editRings = null, baseArea = null, dragging = null;
   var editMode = "move", islandPct = 0;
@@ -1145,60 +1256,219 @@
   }
 
   /* ================= markers =================
-     Each marker is {lng, lat, label, style}. Styles:
-       label — white callout box with a pointer (stretchable icon + icon-text-fit)
-       text  — plain text with a halo
-       dot   — dot with the text beside it
-       logo  — the uploaded logo, drawn as a 3D icon by the WebGL layer          */
+     Marker graphics are BAKED TO CANVAS and registered as icon images rather
+     than using Mapbox text-field. Mapbox can only use fonts baked into the
+     style's glyph set, so canvas is the only way to get real typographic
+     control — webfonts, weights, letter-spacing, rounded pills, pin shapes.
+     Each marker is {lng, lat, label, style}.                                 */
+  var markerImgIds = [], markerImgSeq = 0;
 
-  // A rounded callout with a pointer, registered as a *stretchable* image so
-  // Mapbox can grow the middle to fit whatever text sits in it.
-  function calloutImage(fillCol, textDark){
-    var pr = 2;                       // render at 2x for crisp edges
-    var w = 80, h = 34, tail = 9, r = 6;
+  var MARKER_PRESETS = [
+    { id:"dark",   label:"Dark pill",  dot:"#14161b",
+      look:{ style:"pill", fill:"#14161b", text:"#ffffff", radius:9,  bold:true,  upper:true,  track:0.6, size:17 } },
+    { id:"light",  label:"Light pill", dot:"#ffffff",
+      look:{ style:"pill", fill:"#ffffff", text:"#14161b", radius:9,  bold:true,  upper:true,  track:0.6, size:17 } },
+    { id:"brandp", label:"Brand pill", dot:"#ff2d2d",
+      look:{ style:"pill", fill:"__brand", text:"#ffffff", radius:9,  bold:true,  upper:true,  track:0.6, size:17 } },
+    { id:"softp",  label:"Soft",       dot:"#f2f4f7",
+      look:{ style:"pill", fill:"#ffffff", text:"#14161b", radius:22, bold:false, upper:false, track:0,   size:16 } },
+    { id:"plain",  label:"Text only",  dot:"#9aa0a8",
+      look:{ style:"text", fill:"#000000", text:"#ffffff", radius:0,  bold:true,  upper:true,  track:1.0, size:20 } },
+    { id:"pinonly",label:"Pin",        dot:"#e2413f",
+      look:{ style:"pin",  fill:"__brand", text:"#ffffff", radius:0,  bold:true,  upper:true,  track:0.6, size:17 } },
+    { id:"pinlab", label:"Pin + label",dot:"#e2413f",
+      look:{ style:"pinLabel", fill:"#14161b", text:"#ffffff", radius:9, bold:true, upper:true, track:0.6, size:17 } }
+  ];
+  function renderMarkerPresets(){
+    var host = $("markerPresets"); if(!host) return;
+    host.innerHTML = "";
+    MARKER_PRESETS.forEach(function(p){
+      var b = document.createElement("button");
+      b.className = "preset" + (activeMarkerPreset===p.id ? " on" : "");
+      b.innerHTML = '<span class="swatch" style="background:'+p.dot+'"></span>'+p.label;
+      b.addEventListener("click", function(){ applyMarkerPreset(p); });
+      host.appendChild(b);
+    });
+  }
+  function applyMarkerPreset(p){
+    activeMarkerPreset = p.id;
+    var lk = p.look;
+    $("markerStyle").value  = lk.style;
+    $("markerFill").value   = (lk.fill === "__brand") ? $("lineColor").value : lk.fill;
+    $("markerText").value   = lk.text;
+    $("markerRadius").value = lk.radius;
+    $("markerBold").checked = lk.bold;
+    $("markerUpper").checked= lk.upper;
+    $("markerTrack").value  = lk.track;
+    $("markerSize").value   = lk.size;
+    syncMarkerUI(); renderMarkerPresets(); renderMarkerLayers(); saveSettings();
+  }
+  function clearMarkerPreset(){ if(activeMarkerPreset){ activeMarkerPreset=""; renderMarkerPresets(); } }
+
+  function markerFontStack(){
+    switch($("markerFont").value){
+      case "mono":   return '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+      case "serif":  return 'Georgia, "Times New Roman", serif';
+      case "system": return 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+      default:       return '"Archivo", system-ui, -apple-system, sans-serif';
+    }
+  }
+  function roundRectPath(c, x, y, w, h, r){
+    r = Math.min(r, w/2, h/2);
+    c.beginPath();
+    c.moveTo(x+r, y);
+    c.lineTo(x+w-r, y); c.quadraticCurveTo(x+w, y, x+w, y+r);
+    c.lineTo(x+w, y+h-r); c.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    c.lineTo(x+r, y+h); c.quadraticCurveTo(x, y+h, x, y+h-r);
+    c.lineTo(x, y+r); c.quadraticCurveTo(x, y, x+r, y);
+    c.closePath();
+  }
+  // teardrop location pin with a punched-out hole, like a classic map marker
+  function drawPin(c, cx, top, w, h, col, holeCol){
+    var r = w/2, cy = top + r;
+    c.beginPath();
+    c.moveTo(cx, top+h);
+    c.bezierCurveTo(cx - r*0.92, top + h*0.60, cx - r, cy + r*0.30, cx - r, cy);
+    c.arc(cx, cy, r, Math.PI, 0, false);
+    c.bezierCurveTo(cx + r, cy + r*0.30, cx + r*0.92, top + h*0.60, cx, top+h);
+    c.closePath();
+    c.fillStyle = col; c.fill();
+    c.beginPath(); c.arc(cx, cy, r*0.34, 0, Math.PI*2);
+    c.fillStyle = holeCol; c.fill();
+  }
+
+  // Build the marker graphic. Anchor is always bottom-centre.
+  function buildMarkerCanvas(m){
+    var pr = 2;
+    var fs = parseFloat($("markerSize").value) || 17;
+    var font = markerFontStack();
+    var weight = $("markerBold").checked ? 800 : 600;
+    var upper = $("markerUpper").checked;
+    var track = parseFloat($("markerTrack").value) || 0;
+    var fillCol = $("markerFill").value, textCol = $("markerText").value;
+    var radius = parseFloat($("markerRadius").value) || 0;
+    var style = m.style === "dot" ? "pill" : m.style;   // legacy
+    var raw = (m.label || "").trim();
+    var label = upper ? raw.toUpperCase() : raw;
+    var lines = label ? label.split(/\s*\n\s*/) : [];
+
+    var probe = document.createElement("canvas").getContext("2d");
+    probe.font = weight + " " + fs + "px " + font;
+    function measure(str){
+      var w = probe.measureText(str).width;
+      return w + Math.max(0, str.length - 1) * track;
+    }
+    var textW = 0;
+    lines.forEach(function(l){ textW = Math.max(textW, measure(l)); });
+    var lh = fs * 1.22;
+    var padX = fs * 0.95, padY = fs * 0.52;
+    var boxW = Math.ceil(textW + padX*2);
+    var boxH = Math.ceil(lines.length*lh + padY*2);
+    var tail = Math.round(fs * 0.52);
+    var pinW = Math.round(fs * 2.0), pinH = Math.round(fs * 2.6);
+    var pad  = Math.ceil(fs * 0.5);          // breathing room for the shadow
+
+    var W, H, boxX = pad, boxY = pad, pinTop = pad, pinCx;
+    if(style === "pin"){
+      W = pinW + pad*2; H = pinH + pad*2; pinCx = W/2;
+    } else if(style === "pinLabel" && lines.length){
+      W = Math.max(boxW, pinW) + pad*2;
+      H = boxH + tail + pinH + pad*2;
+      boxX = (W - boxW)/2; pinTop = pad + boxH + tail; pinCx = W/2;
+    } else if(style === "text"){
+      W = Math.ceil(textW) + pad*2; H = Math.ceil(lines.length*lh) + pad*2;
+    } else {
+      if(!lines.length) return null;
+      W = boxW + pad*2; H = boxH + tail + pad*2;
+    }
+    if(!(W > 0) || !(H > 0)) return null;
+
     var cv = document.createElement("canvas");
-    cv.width = w*pr; cv.height = (h+tail)*pr;
+    cv.width = Math.round(W*pr); cv.height = Math.round(H*pr);
     var c = cv.getContext("2d");
     c.scale(pr, pr);
-    c.fillStyle = fillCol;
-    c.beginPath();
-    c.moveTo(r,0); c.lineTo(w-r,0); c.quadraticCurveTo(w,0,w,r);
-    c.lineTo(w,h-r); c.quadraticCurveTo(w,h,w-r,h);
-    c.lineTo(w/2+tail*0.7,h); c.lineTo(w/2,h+tail); c.lineTo(w/2-tail*0.7,h);
-    c.lineTo(r,h); c.quadraticCurveTo(0,h,0,h-r);
-    c.lineTo(0,r); c.quadraticCurveTo(0,0,r,0);
-    c.closePath(); c.fill();
-    var ctx2 = cv.getContext("2d");
-    var data = ctx2.getImageData(0,0,cv.width,cv.height);
-    return {
-      data: data, pixelRatio: pr,
-      // only the flat middle of the box may stretch; corners and tail stay fixed
-      stretchX: [[r*pr, (w-r)*pr]],
-      stretchY: [[r*pr, (h-r)*pr]],
-      content:  [r*pr, r*pr, (w-r)*pr, (h-r)*pr]
-    };
+    c.textBaseline = "middle";
+    c.font = weight + " " + fs + "px " + font;
+
+    function paintText(cx, top){
+      c.fillStyle = textCol;
+      lines.forEach(function(l, i){
+        var y = top + i*lh + lh/2;
+        var x = cx - measure(l)/2;
+        if(track){
+          for(var k=0;k<l.length;k++){
+            c.fillText(l[k], x, y);
+            x += c.measureText(l[k]).width + track;
+          }
+        } else c.fillText(l, x, y);
+      });
+    }
+    function softShadow(on){
+      if(!on){ c.shadowColor = "transparent"; c.shadowBlur = 0; c.shadowOffsetY = 0; return; }
+      c.shadowColor = "rgba(0,0,0,0.35)";
+      c.shadowBlur = fs*0.5; c.shadowOffsetY = fs*0.14;
+    }
+
+    if(style === "pin"){
+      softShadow(true);
+      drawPin(c, pinCx, pinTop, pinW, pinH, fillCol, textCol);
+      softShadow(false);
+    } else if(style === "text"){
+      c.shadowColor = "rgba(0,0,0,0.55)"; c.shadowBlur = fs*0.5; c.shadowOffsetY = fs*0.1;
+      paintText(W/2, pad);
+      c.shadowColor = "transparent";
+    } else {
+      // pill body (+ pointer tail) — shared by pill and pinLabel
+      softShadow(true);
+      c.fillStyle = fillCol;
+      roundRectPath(c, boxX, boxY, boxW, boxH, radius);
+      c.fill();
+      if(style !== "pinLabel"){
+        c.beginPath();
+        var tcx = W/2;
+        c.moveTo(tcx - tail*0.85, boxY + boxH - 1);
+        c.lineTo(tcx + tail*0.85, boxY + boxH - 1);
+        c.lineTo(tcx, boxY + boxH + tail);
+        c.closePath(); c.fill();
+      }
+      softShadow(false);
+      paintText(W/2, boxY + padY);
+      if(style === "pinLabel"){
+        // the pin takes the brand outline colour so it reads against the label
+        softShadow(true);
+        drawPin(c, pinCx, pinTop, pinW, pinH, $("lineColor").value, "#ffffff");
+        softShadow(false);
+      }
+    }
+    return cv;
+  }
+
+  function clearMarkerImages(){
+    markerImgIds.forEach(function(id){ try{ if(map.hasImage(id)) map.removeImage(id); }catch(e){} });
+    markerImgIds = [];
   }
   function ensureMarkerImages(){
     if(!map) return;
-    try{
-      if(!map.hasImage("callout-light")){
-        var a = calloutImage("#ffffff");
-        map.addImage("callout-light", { width:a.data.width, height:a.data.height, data:a.data.data },
-          { pixelRatio:a.pixelRatio, stretchX:a.stretchX, stretchY:a.stretchY, content:a.content });
-      }
-      if(!map.hasImage("callout-dark")){
-        var b = calloutImage("#14161b");
-        map.addImage("callout-dark", { width:b.data.width, height:b.data.height, data:b.data.data },
-          { pixelRatio:b.pixelRatio, stretchX:b.stretchX, stretchY:b.stretchY, content:b.content });
-      }
-    }catch(e){}
+    clearMarkerImages();
+    markers.forEach(function(m){
+      m._img = null;
+      if(m.style === "logo") return;
+      var cv = buildMarkerCanvas(m); if(!cv) return;
+      var id = "mk" + (markerImgSeq++);
+      try{
+        var d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height);
+        map.addImage(id, { width:d.width, height:d.height, data:d.data }, { pixelRatio:2 });
+        markerImgIds.push(id);
+        m._img = id;
+      }catch(e){}
+    });
   }
 
-  function markersFC(styles){
+  function markersFC(){
     var feats = [];
     markers.forEach(function(m, i){
-      if(styles && styles.indexOf(m.style) < 0) return;
-      try{ feats.push(turf.point([m.lng, m.lat], { label:m.label||"", style:m.style, idx:i })); }catch(e){}
+      if(!m._img) return;
+      try{ feats.push(turf.point([m.lng, m.lat], { img:m._img, idx:i })); }catch(e){}
     });
     return turf.featureCollection(feats);
   }
@@ -1207,37 +1477,16 @@
     if(!map) return;
     ["marker-dots","marker-labels"].forEach(function(l){ try{ if(map.getLayer(l)) map.removeLayer(l); }catch(e){} });
     try{ if(map.getSource("markers-src")) map.removeSource("markers-src"); }catch(e){}
-    var visible = markers.filter(function(m){ return m.style !== "logo"; });
-    if(!visible.length) return;
+    if(!markers.some(function(m){ return m.style !== "logo"; })) { clearMarkerImages(); return; }
     ensureMarkerImages();
-    var dark = $("markerDark").checked;
     try{
-      map.addSource("markers-src", { type:"geojson", data: markersFC(["label","text","dot"]) });
-      map.addLayer({ id:"marker-dots", type:"circle", source:"markers-src",
-        filter:["==",["get","style"],"dot"],
-        paint:{ "circle-radius":6, "circle-color":$("lineColor").value,
-                "circle-stroke-width":2, "circle-stroke-color": dark ? "#14161b" : "#ffffff" } });
+      map.addSource("markers-src", { type:"geojson", data: markersFC() });
       map.addLayer({ id:"marker-labels", type:"symbol", source:"markers-src",
         layout:{
-          "text-field":["get","label"],
-          "text-font":["DIN Pro Bold","Arial Unicode MS Bold"],
-          "text-size": parseFloat($("markerSize").value) || 16,
-          "text-anchor":["case",["==",["get","style"],"label"],"bottom","center"],
-          "text-offset":["case",
-            ["==",["get","style"],"label"],["literal",[0,-0.6]],
-            ["==",["get","style"],"dot"],["literal",[0,-1.3]],
-            ["literal",[0,0]]],
-          "icon-image":["case",["==",["get","style"],"label"], dark?"callout-dark":"callout-light", ""],
-          "icon-text-fit":"both",
-          "icon-text-fit-padding":[7,10,13,10],
+          "icon-image":["get","img"],
           "icon-anchor":"bottom",
-          "icon-allow-overlap":true, "icon-ignore-placement":true,
-          "text-allow-overlap":true, "text-ignore-placement":true
-        },
-        paint:{
-          "text-color":["case",["==",["get","style"],"label"], dark?"#ffffff":"#14161b", dark?"#ffffff":"#ffffff"],
-          "text-halo-color":["case",["==",["get","style"],"label"],"rgba(0,0,0,0)","rgba(0,0,0,0.65)"],
-          "text-halo-width":["case",["==",["get","style"],"label"],0,1.6]
+          "icon-allow-overlap":true,
+          "icon-ignore-placement":true
         } });
     }catch(e){}
   }
@@ -1298,10 +1547,29 @@
     if(map) map.getCanvas().style.cursor = placingMarker ? "crosshair" : "";
     setStatus(placingMarker ? "Click anywhere on the map to drop a marker." : "", placingMarker?"ok":"");
   });
-  ["markerStyle","markerSize","markerDark"].forEach(function(id){
-    $(id).addEventListener("change", function(){ renderMarkerLayers(); saveSettings(); });
+  function syncMarkerUI(){
+    $("markerSizeVal").textContent   = $("markerSize").value + "px";
+    $("markerRadiusVal").textContent = $("markerRadius").value;
+    $("markerTrackVal").textContent  = $("markerTrack").value;
+    var st = $("markerStyle").value;
+    // radius/letter-spacing don't apply to a bare pin
+    $("markerRadius").closest(".field").style.display = (st==="pin") ? "none" : "";
+    $("markerFont").closest(".field").style.display   = (st==="pin") ? "none" : "";
+    syncTags();
+  }
+  ["markerStyle","markerFont","markerFill","markerText","markerBold","markerUpper"].forEach(function(id){
+    $(id).addEventListener("change", function(){
+      clearMarkerPreset(); syncMarkerUI(); renderMarkerLayers(); saveSettings();
+    });
   });
-  $("markerSize").addEventListener("input", function(){ $("markerSizeVal").textContent = this.value+"px"; });
+  ["markerSize","markerRadius","markerTrack"].forEach(function(id){
+    $(id).addEventListener("input", function(){ clearMarkerPreset(); syncMarkerUI(); renderMarkerLayers(); });
+    $(id).addEventListener("change", saveSettings);
+  });
+  $("markerBrand").addEventListener("click", function(){
+    $("markerFill").value = $("lineColor").value;
+    clearMarkerPreset(); renderMarkerLayers(); saveSettings();
+  });
   $("markersClear").addEventListener("click", function(){
     if(!markers.length) return;
     markers = []; renderMarkerList(); renderMarkerLayers();
@@ -1439,6 +1707,40 @@
     "void main(){ vec4 c = u_useTex > 0.5 ? texture2D(u_tex, v_uv) : u_color;" +
     " gl_FragColor = vec4(c.rgb, c.a * u_opacity); }";
 
+  var panelTexAspect = 1;
+  // Bake the board face once per settings change: rounded corners, padding,
+  // a soft top-light gradient and a printed-edge hairline. Far better looking
+  // than stacking a plain white quad behind the logo.
+  function buildPanelTexture(){
+    if(!logoImg) return null;
+    var backStyle = $("logoBack").value;
+    var pad = (backStyle === "none") ? 0 : 0.13;      // fraction of logo width
+    var lw = 1024, lh = Math.max(1, Math.round(lw / (logoAspect || 1)));
+    var px = Math.round(lw * pad), py = px;
+    var W = lw + px*2, H = lh + py*2;
+    var cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    var c = cv.getContext("2d");
+    if(backStyle !== "none"){
+      var rgb = hexToRGB($("logoBackColor").value).map(function(v){ return v*255; });
+      function mix(k){
+        return "rgb(" + Math.min(255,Math.round(rgb[0]*k)) + "," +
+                        Math.min(255,Math.round(rgb[1]*k)) + "," +
+                        Math.min(255,Math.round(rgb[2]*k)) + ")";
+      }
+      var r = Math.min(W,H) * 0.085;
+      var g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, mix(1.10)); g.addColorStop(0.55, mix(1.0)); g.addColorStop(1, mix(0.86));
+      c.fillStyle = g;
+      roundRectPath(c, 0, 0, W, H, r); c.fill();
+      var lwd = Math.max(2, W*0.004);
+      c.strokeStyle = "rgba(0,0,0,0.13)"; c.lineWidth = lwd;
+      roundRectPath(c, lwd/2, lwd/2, W-lwd, H-lwd, r); c.stroke();
+    }
+    c.drawImage(logoImg, px, py, lw, lh);
+    panelTexAspect = W/H;
+    return cv;
+  }
+
   function texFromCanvasOrImage(gl, src){
     var t = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, t);
@@ -1567,7 +1869,7 @@
     return {
       widthM: widthM,
       panelW: panelW,
-      panelH: panelW / (logoAspect || 1),
+      panelH: panelW / (panelTexAspect || logoAspect || 1),
       base:   widthM * (parseFloat($("logoHeight").value)/100) * 0.30,
       depth:  panelW * (parseFloat($("logoDepth").value)/100) * 0.25
     };
@@ -1598,7 +1900,8 @@
           uColor = gl.getUniformLocation(prog, "u_color");
           uUseTex = gl.getUniformLocation(prog, "u_useTex");
           buf = gl.createBuffer();
-          if(logoImg) tex = texFromCanvasOrImage(gl, logoImg);
+          var face = buildPanelTexture();
+          if(face) tex = texFromCanvasOrImage(gl, face);
           shTex = texFromCanvasOrImage(gl, shadowCanvas());
           ready = !!tex;
         }catch(err){ ready = false; }
@@ -1687,18 +1990,14 @@
             }
           }
 
-          // 4 · the board itself, extruded. Side walls get darker shading so the
-          //     thickness reads as real geometry rather than a flat card.
-          if(backStyle !== "none"){
-            draw(panelSides(f, hw+pad, z0-pad, z1+pad, d), null, shade(backCol, 0.62), op);
-            draw(panelFace(f, hw+pad, z0-pad, z1+pad,  d/2), null, shade(backCol, 0.78), op);  // back
-            draw(panelFace(f, hw+pad, z0-pad, z1+pad, -d/2), null, shade(backCol, 1.0),  op);  // front
-          } else {
-            draw(panelSides(f, hw, z0, z1, d), null, shade([0.75,0.75,0.78], 0.6), op);
+          // 4 · extruded slab. The face texture already carries the card, so we
+          //     only need shaded side walls + a back to sell the thickness.
+          if(d > 0){
+            draw(panelSides(f, hw, z0, z1, d), null, shade(backCol, 0.55), op);
+            draw(panelFace(f, hw, z0, z1, d/2), null, shade(backCol, 0.72), op);   // back
           }
-
-          // 5 · the logo, sitting just proud of the front face
-          draw(panelFace(f, hw, z0, z1, -d/2 - M.panelW*0.002), tex, null, op);
+          // 5 · the baked board face
+          draw(panelFace(f, hw, z0, z1, -d/2), tex, null, op);
         }
 
         gl.depthMask(true);
@@ -1848,10 +2147,13 @@
     });
     $(id).addEventListener("change", saveSettings);
   });
-  ["logoBack","logoBackColor","logoFaceCam"].forEach(function(id){
-    $(id).addEventListener("input", function(){ if(map) map.triggerRepaint(); });
-    $(id).addEventListener("change", function(){ if(map) map.triggerRepaint(); saveSettings(); });
+  // backing colour/style are baked into the face texture, so the layer has to be
+  // rebuilt (not just repainted) for those two
+  ["logoBack","logoBackColor"].forEach(function(id){
+    $(id).addEventListener("input",  function(){ if(map) renderLogoLayers(); });
+    $(id).addEventListener("change", function(){ if(map) renderLogoLayers(); saveSettings(); });
   });
+  $("logoFaceCam").addEventListener("change", function(){ if(map) map.triggerRepaint(); saveSettings(); });
   window.addEventListener("resize", syncFloatOverlay);
 
   /* ================= saved clients (server-backed via /api/clients) ================= */
@@ -1918,7 +2220,10 @@
       logoDepth:$("logoDepth").value, logoBack:$("logoBack").value, logoBackColor:$("logoBackColor").value,
       logoGlow:$("logoGlow").value, logoFaceCam:$("logoFaceCam").checked, logoTiles:$("logoTiles").value,
       markers:markers, markerStyle:$("markerStyle").value, markerSize:$("markerSize").value,
-      markerDark:$("markerDark").checked, strokeAnim:$("strokeAnim").checked,
+      markerFont:$("markerFont").value, markerFill:$("markerFill").value, markerText:$("markerText").value,
+      markerRadius:$("markerRadius").value, markerTrack:$("markerTrack").value,
+      markerBold:$("markerBold").checked, markerUpper:$("markerUpper").checked,
+      markerPreset:activeMarkerPreset, strokeAnim:$("strokeAnim").checked,
       strokeStart:$("strokeStart").value, strokeSpan:$("strokeSpan").value
     };
     var btn = $("clientSave"); btn.disabled = true;
@@ -1982,10 +2287,20 @@
     if(c.logoGlow!=null) $("logoGlow").value = c.logoGlow;
     if(typeof c.logoFaceCam==="boolean") $("logoFaceCam").checked = c.logoFaceCam;
     if(c.logoTiles) $("logoTiles").value = c.logoTiles;
-    markers = Array.isArray(c.markers) ? c.markers : [];
-    if(c.markerStyle) $("markerStyle").value = c.markerStyle;
-    if(c.markerSize){ $("markerSize").value = c.markerSize; $("markerSizeVal").textContent = c.markerSize+"px"; }
-    if(typeof c.markerDark==="boolean") $("markerDark").checked = c.markerDark;
+    markers = (Array.isArray(c.markers) ? c.markers : []).map(function(m){
+      if(m && (m.style==="label" || m.style==="dot")) m.style = "pill";
+      return m;
+    });
+    if(c.markerStyle) $("markerStyle").value = (c.markerStyle==="label"||c.markerStyle==="dot") ? "pill" : c.markerStyle;
+    if(c.markerSize) $("markerSize").value = c.markerSize;
+    if(c.markerFont) $("markerFont").value = c.markerFont;
+    if(c.markerFill) $("markerFill").value = c.markerFill;
+    if(c.markerText) $("markerText").value = c.markerText;
+    if(c.markerRadius!=null) $("markerRadius").value = c.markerRadius;
+    if(c.markerTrack!=null) $("markerTrack").value = c.markerTrack;
+    if(typeof c.markerBold==="boolean") $("markerBold").checked = c.markerBold;
+    if(typeof c.markerUpper==="boolean") $("markerUpper").checked = c.markerUpper;
+    activeMarkerPreset = c.markerPreset || ""; renderMarkerPresets(); syncMarkerUI();
     if(typeof c.strokeAnim==="boolean") $("strokeAnim").checked = c.strokeAnim;
     if(c.strokeStart!=null) $("strokeStart").value = c.strokeStart;
     if(c.strokeSpan!=null) $("strokeSpan").value = c.strokeSpan;
@@ -2000,6 +2315,23 @@
 
   /* ---------- status ---------- */
   function setStatus(msg, cls){ var s=$("status"); s.textContent=msg||""; s.className="status"+(cls?" "+cls:""); }
+
+  /* ---------- theme + right-panel drawer ---------- */
+  var THEME_KEY = "sa_theme";
+  function applyTheme(t){
+    document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+    $("themeBtn").innerHTML = (t === "light") ? "&#9789;" : "&#9788;";
+    $("themeBtn").title = (t === "light") ? "Switch to dark" : "Switch to light";
+    try{ localStorage.setItem(THEME_KEY, t); }catch(e){}
+  }
+  $("themeBtn").addEventListener("click", function(){
+    var cur = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+    applyTheme(cur === "light" ? "dark" : "light");
+  });
+  $("rpToggle").addEventListener("click", function(){
+    document.body.classList.toggle("rp-open");
+    this.textContent = document.body.classList.contains("rp-open") ? "Close" : "Style";
+  });
 
   /* ---------- collapsed-section summaries ---------- */
   function syncTags(){
@@ -2866,11 +3198,16 @@
   /* ---------- boot ---------- */
   loadSettings(); syncSeg(); syncFpsSeg(); syncLabel(); syncCustomStyle(); syncSrc();
   syncStyleReadouts(); syncLogoUI(); syncFloatOverlay(); syncStrokeUI(); renderMarkerList();
-  $("markerSizeVal").textContent = $("markerSize").value+"px";
+  renderMarkerPresets(); syncMarkerUI();
   $("tiltVal").textContent = parseFloat($("tilt").value) ? $("tilt").value+"°" : "off";
   $("rotVal").textContent = $("rot").value+"°";
   $("vidDurVal").textContent = $("vidDur").value+" s";
   renderPresets(); refreshClientList(); syncTags();
+  try{ applyTheme(localStorage.getItem(THEME_KEY) || "dark"); }catch(e){ applyTheme("dark"); }
+  // marker labels are baked to canvas, so wait for the webfont before first paint
+  if(document.fonts && document.fonts.ready){
+    document.fonts.ready.then(function(){ if(map && markers.length) renderMarkerLayers(); }).catch(function(){});
+  }
   if(srcMode === "states") ensureStates().catch(function(){});
   if($("token").value.trim().indexOf("pk.")===0){ initMap(); }
 })();
