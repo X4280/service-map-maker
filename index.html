@@ -143,6 +143,16 @@
   }
   .secbody{padding:2px 0 16px}
 
+  /* marker list rows */
+  .mrow{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+  .mrow .mstyle{
+    font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--ink-faint);background:var(--panel-2);border:1px solid var(--line);
+    border-radius:5px;padding:5px 6px;flex:none;width:56px;text-align:center;
+  }
+  .mrow input[type=text]{flex:1;padding:7px 9px;font-size:12px}
+  .mrow .iconbtn{width:34px;font-size:13px}
+
   /* logo overlay preview on the map */
   #logoOverlay{position:absolute;z-index:6;pointer-events:none;display:none;max-width:none}
 
@@ -410,15 +420,24 @@
             <label class="lab" for="logoMode">Placement</label>
             <select id="logoMode">
               <optgroup label="3D — sits in the scene">
-                <option value="billboard">Billboard — panel on a post</option>
+                <option value="billboard">Billboard — panel on posts</option>
                 <option value="pin3d">Pin — floating marker + stem</option>
-                <option value="flat">Flat — lies on the ground</option>
+                <option value="scatter">Scatter — one per state/piece</option>
+              </optgroup>
+              <optgroup label="On the ground">
+                <option value="flat">Flat — single, lies on the area</option>
+                <option value="tiled">Tiled — fills the whole area</option>
               </optgroup>
               <optgroup label="2D — pinned to the frame">
                 <option value="float">Floating watermark</option>
               </optgroup>
             </select>
-            <div class="hint" id="logoModeHint">Billboard and Pin stand up in 3D — turn on <b>Cinematic tilt</b> in Motion to see them.</div>
+            <div class="hint" id="logoModeHint">3D placements stand up in the scene — turn on <b>Cinematic tilt</b> in Motion to see them properly.</div>
+          </div>
+          <div class="field" id="logoTilesWrap" style="display:none">
+            <div class="slabel"><label class="lab" style="margin:0">Tiles across</label><span class="val" id="logoTilesVal">4</span></div>
+            <input type="range" id="logoTiles" min="1" max="14" step="1" value="4" />
+            <div class="hint">Repeats the logo across the area, clipped to its shape.</div>
           </div>
           <div class="field" id="logoPosWrap">
             <label class="lab" for="logoPos">Position</label>
@@ -435,6 +454,29 @@
             <input type="range" id="logoHeight" min="0" max="100" step="1" value="30" />
             <div class="hint">How far it stands off the map.</div>
           </div>
+          <div class="field" id="logoDepthWrap">
+            <div class="slabel"><label class="lab" style="margin:0">Thickness</label><span class="val" id="logoDepthVal">20%</span></div>
+            <input type="range" id="logoDepth" min="0" max="100" step="1" value="20" />
+            <div class="hint">Extrudes the board — the shaded side walls are what read as solid 3D.</div>
+          </div>
+          <div class="field" id="logoBackWrap">
+            <label class="lab">Backing</label>
+            <div class="colorrow">
+              <input type="color" id="logoBackColor" value="#ffffff" />
+              <select id="logoBack" style="flex:1">
+                <option value="card">Card</option>
+                <option value="none">None — logo only</option>
+              </select>
+            </div>
+          </div>
+          <div class="field" id="logoGlowWrap">
+            <div class="slabel"><label class="lab" style="margin:0">Logo glow</label><span class="val" id="logoGlowVal">off</span></div>
+            <input type="range" id="logoGlow" min="0" max="100" step="1" value="0" />
+          </div>
+          <div class="tog" id="logoFaceCamWrap">
+            <span>Face the camera <span style="color:var(--ink-faint);font-size:11px">· off = true perspective</span></span>
+            <label class="switch"><input type="checkbox" id="logoFaceCam" checked><span class="track"></span></label>
+          </div>
           <div class="tog" id="logoShadowWrap">
             <span>Ground shadow</span>
             <label class="switch"><input type="checkbox" id="logoShadow" checked><span class="track"></span></label>
@@ -447,6 +489,44 @@
             <div class="slabel"><label class="lab" style="margin:0">Opacity</label><span class="val" id="logoOpVal">100%</span></div>
             <input type="range" id="logoOp" min="10" max="100" step="1" value="100" />
           </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="sec" id="secMarkers">
+      <summary><span class="chev">&#9654;</span>Markers<span class="tag" id="markersTag"></span></summary>
+      <div class="secbody">
+        <div class="field">
+          <label class="lab" for="markerStyle">Style</label>
+          <select id="markerStyle">
+            <option value="label">Callout box + text</option>
+            <option value="text">Text only</option>
+            <option value="dot">Dot + text</option>
+            <option value="logo">Your logo (3D)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="lab" for="markerPlace">Add by place</label>
+          <div class="clientrow">
+            <input type="text" id="markerPlace" placeholder="Orange County, CA" spellcheck="false" />
+            <button class="iconbtn" id="markerAdd" title="Add marker">+</button>
+          </div>
+        </div>
+        <button class="btn btn-ghost" id="markerPick" style="margin-top:0">Click map to place</button>
+
+        <div class="field" style="margin-top:15px">
+          <div class="slabel"><label class="lab" style="margin:0">Text size</label><span class="val" id="markerSizeVal">16px</span></div>
+          <input type="range" id="markerSize" min="10" max="40" step="1" value="16" />
+        </div>
+        <div class="tog">
+          <span>Dark style</span>
+          <label class="switch"><input type="checkbox" id="markerDark"><span class="track"></span></label>
+        </div>
+
+        <div class="field" style="margin-top:15px;margin-bottom:0">
+          <label class="lab">Placed markers</label>
+          <div id="markerList"></div>
+          <button class="btn btn-ghost" id="markersClear" style="margin-top:10px">Clear all</button>
         </div>
       </div>
     </details>
@@ -468,10 +548,26 @@
           <input type="range" id="tilt" min="0" max="70" step="1" value="0" />
           <div class="hint">Camera pitch at the end of the zoom. 0 = straight down.</div>
         </div>
-        <div class="field" style="margin-bottom:0">
+        <div class="field">
           <div class="slabel"><label class="lab" style="margin:0">Rotate</label><span class="val" id="rotVal">0&deg;</span></div>
           <input type="range" id="rot" min="-90" max="90" step="5" value="0" />
           <div class="hint">Bearing at the end. 0 = north up.</div>
+        </div>
+
+        <div class="tog" style="border-top:1px solid var(--line)">
+          <span>Draw-on stroke</span>
+          <label class="switch"><input type="checkbox" id="strokeAnim"><span class="track"></span></label>
+        </div>
+        <div id="strokeOpts" style="display:none">
+          <div class="field" style="margin-top:13px">
+            <div class="slabel"><label class="lab" style="margin:0">Starts at</label><span class="val" id="strokeStartVal">10%</span></div>
+            <input type="range" id="strokeStart" min="0" max="80" step="1" value="10" />
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <div class="slabel"><label class="lab" style="margin:0">Draws over</label><span class="val" id="strokeSpanVal">60%</span></div>
+            <input type="range" id="strokeSpan" min="10" max="100" step="1" value="60" />
+            <div class="hint">The outline traces itself on as the camera flies in — both as % of the clip.</div>
+          </div>
         </div>
       </div>
     </details>
@@ -578,7 +674,20 @@
       logoOp: $("logoOp").value,
       logoHeight: $("logoHeight").value,
       logoShadow: $("logoShadow").checked,
-      handles: $("handles").value
+      handles: $("handles").value,
+      logoDepth: $("logoDepth").value,
+      logoBack: $("logoBack").value,
+      logoBackColor: $("logoBackColor").value,
+      logoGlow: $("logoGlow").value,
+      logoFaceCam: $("logoFaceCam").checked,
+      logoTiles: $("logoTiles").value,
+      markers: markers,
+      markerStyle: $("markerStyle").value,
+      markerSize: $("markerSize").value,
+      markerDark: $("markerDark").checked,
+      strokeAnim: $("strokeAnim").checked,
+      strokeStart: $("strokeStart").value,
+      strokeSpan: $("strokeSpan").value
     };
     try{ localStorage.setItem(STORE, JSON.stringify(s)); }catch(e){}
   }
@@ -620,6 +729,19 @@
     if(s.logoHeight) $("logoHeight").value = s.logoHeight;
     if(typeof s.logoShadow==="boolean") $("logoShadow").checked = s.logoShadow;
     if(s.handles){ $("handles").value = s.handles; $("handlesVal").textContent = s.handles; }
+    if(s.logoDepth) $("logoDepth").value = s.logoDepth;
+    if(s.logoBack) $("logoBack").value = s.logoBack;
+    if(s.logoBackColor) $("logoBackColor").value = s.logoBackColor;
+    if(s.logoGlow!=null) $("logoGlow").value = s.logoGlow;
+    if(typeof s.logoFaceCam==="boolean") $("logoFaceCam").checked = s.logoFaceCam;
+    if(s.logoTiles) $("logoTiles").value = s.logoTiles;
+    if(Array.isArray(s.markers)) markers = s.markers;
+    if(s.markerStyle) $("markerStyle").value = s.markerStyle;
+    if(s.markerSize){ $("markerSize").value = s.markerSize; $("markerSizeVal").textContent = s.markerSize+"px"; }
+    if(typeof s.markerDark==="boolean") $("markerDark").checked = s.markerDark;
+    if(typeof s.strokeAnim==="boolean") $("strokeAnim").checked = s.strokeAnim;
+    if(s.strokeStart!=null) $("strokeStart").value = s.strokeStart;
+    if(s.strokeSpan!=null) $("strokeSpan").value = s.strokeSpan;
     if(s.logo) setLogo(s.logo);
   }
 
@@ -662,6 +784,43 @@
   var editing = false, editRings = null, baseArea = null, dragging = null;
   var editMode = "move", islandPct = 0;
   var logoDataUrl = "", logoImg = null, logoAspect = 1;
+  var lastOutline = null, strokeProgress = 1, markers = [], placingMarker = false;
+  // Anchor points captured BEFORE the union merges everything — needed for
+  // scatter mode, since unioning 48 contiguous states yields a single polygon.
+  var areaParts = [];
+
+  /* ---------- stroke draw-on animation ---------- */
+  // Slice every ring of the outline to `p` of its length. Deterministic, so the
+  // frame-by-frame encoder reproduces it exactly.
+  function slicedOutline(p){
+    var feats = [];
+    if(!lastOutline) return turf.featureCollection(feats);
+    lastOutline.features.forEach(function(f){
+      try{
+        var len = turf.length(f, { units:"kilometers" });
+        if(!(len > 0)) return;
+        var d = len * p;
+        if(d <= 0) return;
+        feats.push(turf.lineSliceAlong(f, 0, Math.min(d, len), { units:"kilometers" }));
+      }catch(e){}
+    });
+    return turf.featureCollection(feats);
+  }
+  function setStrokeProgress(p){
+    strokeProgress = Math.max(0, Math.min(1, p));
+    if(!map || !lastOutline) return;
+    var src = map.getSource("outline-src"); if(!src) return;
+    try{ src.setData(strokeProgress >= 1 ? lastOutline : slicedOutline(strokeProgress)); }catch(e){}
+  }
+  // map clip progress t -> stroke progress, honouring the start/span controls
+  function strokeAt(t){
+    if(!$("strokeAnim").checked) return 1;
+    var start = (parseFloat($("strokeStart").value)||0)/100;
+    var span  = Math.max(0.05, (parseFloat($("strokeSpan").value)||60)/100);
+    var p = (t - start) / span;
+    p = Math.max(0, Math.min(1, p));
+    return p*p*(3-2*p);   // smoothstep so the tip eases in and out
+  }
 
   function initMap(){
     var token = $("token").value.trim();
@@ -794,15 +953,33 @@
   }
 
   /* ---------- render onto the map ---------- */
-  var AREA_LAYERS  = ["area-fill","logo-flat","area-glow2","area-glow1","area-line","zip-dots","logo-pin"];
-  var AREA_SOURCES = ["area-src","points-src","logo-flat-src","logo-pin-src"];
+  var AREA_LAYERS  = ["area-fill","logo-flat","area-glow2","area-glow1","area-line","zip-dots",
+                      "logo-pin","marker-dots","marker-labels"];
+  var AREA_SOURCES = ["area-src","outline-src","points-src","logo-flat-src","logo-pin-src","markers-src"];
+
+  // The outline gets its own LineString source so the stroke can be sliced
+  // progressively for the draw-on animation (a polygon source can't be trimmed).
+  function outlineFC(area){
+    var feats = [];
+    try{
+      turf.flatten(area).features.forEach(function(pf){
+        var g = pf.geometry; if(!g || g.type !== "Polygon") return;
+        g.coordinates.forEach(function(ring){
+          if(ring && ring.length >= 2){ try{ feats.push(turf.lineString(ring)); }catch(e){} }
+        });
+      });
+    }catch(e){}
+    return turf.featureCollection(feats);
+  }
 
   function renderLayers(){
     AREA_LAYERS.forEach(function(l){ if(map.getLayer(l)) map.removeLayer(l); });
     AREA_SOURCES.forEach(function(s){ if(map.getSource(s)) map.removeSource(s); });
 
     var col = $("lineColor").value, lw = parseFloat($("lineW").value);
+    lastOutline = outlineFC(lastArea);
     map.addSource("area-src", { type:"geojson", data:lastArea });
+    map.addSource("outline-src", { type:"geojson", data: strokeProgress >= 1 ? lastOutline : slicedOutline(strokeProgress) });
 
     if($("fill").checked){
       map.addLayer({ id:"area-fill", type:"fill", source:"area-src",
@@ -814,15 +991,15 @@
     // survives the 4K export path unchanged.
     var g = glowAmt / 100;
     if(g > 0){
-      map.addLayer({ id:"area-glow2", type:"line", source:"area-src",
+      map.addLayer({ id:"area-glow2", type:"line", source:"outline-src",
         layout:{ "line-cap":"round", "line-join":"round" },
         paint:{ "line-color":col, "line-width":lw*(1+5.0*g), "line-blur":lw*(1+4.0*g), "line-opacity":0.30*g } });
-      map.addLayer({ id:"area-glow1", type:"line", source:"area-src",
+      map.addLayer({ id:"area-glow1", type:"line", source:"outline-src",
         layout:{ "line-cap":"round", "line-join":"round" },
         paint:{ "line-color":col, "line-width":lw*(1+2.2*g), "line-blur":lw*(0.5+1.6*g), "line-opacity":0.45*g } });
     }
 
-    map.addLayer({ id:"area-line", type:"line", source:"area-src",
+    map.addLayer({ id:"area-line", type:"line", source:"outline-src",
       layout:{ "line-cap":"round", "line-join":"round" },
       paint:{ "line-color":col, "line-width":lw, "line-opacity":0.95 } });
 
@@ -832,6 +1009,7 @@
         paint:{ "circle-radius":3.2, "circle-color":col, "circle-stroke-width":1, "circle-stroke-color":"#fff", "circle-opacity":0.85 } });
     }
 
+    renderMarkerLayers();
     renderLogoLayers();
 
     // keep edit handles above the freshly re-added area layers
@@ -966,6 +1144,171 @@
     if(map && lastArea) renderLayers();
   }
 
+  /* ================= markers =================
+     Each marker is {lng, lat, label, style}. Styles:
+       label — white callout box with a pointer (stretchable icon + icon-text-fit)
+       text  — plain text with a halo
+       dot   — dot with the text beside it
+       logo  — the uploaded logo, drawn as a 3D icon by the WebGL layer          */
+
+  // A rounded callout with a pointer, registered as a *stretchable* image so
+  // Mapbox can grow the middle to fit whatever text sits in it.
+  function calloutImage(fillCol, textDark){
+    var pr = 2;                       // render at 2x for crisp edges
+    var w = 80, h = 34, tail = 9, r = 6;
+    var cv = document.createElement("canvas");
+    cv.width = w*pr; cv.height = (h+tail)*pr;
+    var c = cv.getContext("2d");
+    c.scale(pr, pr);
+    c.fillStyle = fillCol;
+    c.beginPath();
+    c.moveTo(r,0); c.lineTo(w-r,0); c.quadraticCurveTo(w,0,w,r);
+    c.lineTo(w,h-r); c.quadraticCurveTo(w,h,w-r,h);
+    c.lineTo(w/2+tail*0.7,h); c.lineTo(w/2,h+tail); c.lineTo(w/2-tail*0.7,h);
+    c.lineTo(r,h); c.quadraticCurveTo(0,h,0,h-r);
+    c.lineTo(0,r); c.quadraticCurveTo(0,0,r,0);
+    c.closePath(); c.fill();
+    var ctx2 = cv.getContext("2d");
+    var data = ctx2.getImageData(0,0,cv.width,cv.height);
+    return {
+      data: data, pixelRatio: pr,
+      // only the flat middle of the box may stretch; corners and tail stay fixed
+      stretchX: [[r*pr, (w-r)*pr]],
+      stretchY: [[r*pr, (h-r)*pr]],
+      content:  [r*pr, r*pr, (w-r)*pr, (h-r)*pr]
+    };
+  }
+  function ensureMarkerImages(){
+    if(!map) return;
+    try{
+      if(!map.hasImage("callout-light")){
+        var a = calloutImage("#ffffff");
+        map.addImage("callout-light", { width:a.data.width, height:a.data.height, data:a.data.data },
+          { pixelRatio:a.pixelRatio, stretchX:a.stretchX, stretchY:a.stretchY, content:a.content });
+      }
+      if(!map.hasImage("callout-dark")){
+        var b = calloutImage("#14161b");
+        map.addImage("callout-dark", { width:b.data.width, height:b.data.height, data:b.data.data },
+          { pixelRatio:b.pixelRatio, stretchX:b.stretchX, stretchY:b.stretchY, content:b.content });
+      }
+    }catch(e){}
+  }
+
+  function markersFC(styles){
+    var feats = [];
+    markers.forEach(function(m, i){
+      if(styles && styles.indexOf(m.style) < 0) return;
+      try{ feats.push(turf.point([m.lng, m.lat], { label:m.label||"", style:m.style, idx:i })); }catch(e){}
+    });
+    return turf.featureCollection(feats);
+  }
+
+  function renderMarkerLayers(){
+    if(!map) return;
+    ["marker-dots","marker-labels"].forEach(function(l){ try{ if(map.getLayer(l)) map.removeLayer(l); }catch(e){} });
+    try{ if(map.getSource("markers-src")) map.removeSource("markers-src"); }catch(e){}
+    var visible = markers.filter(function(m){ return m.style !== "logo"; });
+    if(!visible.length) return;
+    ensureMarkerImages();
+    var dark = $("markerDark").checked;
+    try{
+      map.addSource("markers-src", { type:"geojson", data: markersFC(["label","text","dot"]) });
+      map.addLayer({ id:"marker-dots", type:"circle", source:"markers-src",
+        filter:["==",["get","style"],"dot"],
+        paint:{ "circle-radius":6, "circle-color":$("lineColor").value,
+                "circle-stroke-width":2, "circle-stroke-color": dark ? "#14161b" : "#ffffff" } });
+      map.addLayer({ id:"marker-labels", type:"symbol", source:"markers-src",
+        layout:{
+          "text-field":["get","label"],
+          "text-font":["DIN Pro Bold","Arial Unicode MS Bold"],
+          "text-size": parseFloat($("markerSize").value) || 16,
+          "text-anchor":["case",["==",["get","style"],"label"],"bottom","center"],
+          "text-offset":["case",
+            ["==",["get","style"],"label"],["literal",[0,-0.6]],
+            ["==",["get","style"],"dot"],["literal",[0,-1.3]],
+            ["literal",[0,0]]],
+          "icon-image":["case",["==",["get","style"],"label"], dark?"callout-dark":"callout-light", ""],
+          "icon-text-fit":"both",
+          "icon-text-fit-padding":[7,10,13,10],
+          "icon-anchor":"bottom",
+          "icon-allow-overlap":true, "icon-ignore-placement":true,
+          "text-allow-overlap":true, "text-ignore-placement":true
+        },
+        paint:{
+          "text-color":["case",["==",["get","style"],"label"], dark?"#ffffff":"#14161b", dark?"#ffffff":"#ffffff"],
+          "text-halo-color":["case",["==",["get","style"],"label"],"rgba(0,0,0,0)","rgba(0,0,0,0.65)"],
+          "text-halo-width":["case",["==",["get","style"],"label"],0,1.6]
+        } });
+    }catch(e){}
+  }
+
+  function renderMarkerList(){
+    var host = $("markerList"); if(!host) return;
+    host.innerHTML = "";
+    if(!markers.length){
+      host.innerHTML = '<div class="hint" style="margin:0">No markers yet.</div>';
+      syncTags(); return;
+    }
+    markers.forEach(function(m, i){
+      var row = document.createElement("div");
+      row.className = "mrow";
+      row.innerHTML = '<span class="mstyle">'+m.style+'</span>';
+      var inp = document.createElement("input");
+      inp.type="text"; inp.value = m.label || ""; inp.placeholder="label";
+      inp.addEventListener("input", function(){ markers[i].label = this.value; renderMarkerLayers(); });
+      inp.addEventListener("change", saveSettings);
+      var del = document.createElement("button");
+      del.className="iconbtn danger"; del.innerHTML="&#128465;"; del.title="Remove";
+      del.addEventListener("click", function(){
+        markers.splice(i,1); renderMarkerList(); renderMarkerLayers();
+        if(map) renderLogoLayers();
+        saveSettings();
+      });
+      row.appendChild(inp); row.appendChild(del);
+      host.appendChild(row);
+    });
+    syncTags();
+  }
+
+  function addMarkerAt(lng, lat, label){
+    markers.push({ lng:lng, lat:lat, label:label||"", style:$("markerStyle").value });
+    renderMarkerList(); renderMarkerLayers();
+    if(map) renderLogoLayers();
+    saveSettings();
+  }
+
+  $("markerAdd").addEventListener("click", function(){
+    var q = $("markerPlace").value.trim();
+    if(!q){ setStatus("Type a place, or use “Click map to place”.","err"); return; }
+    var token = $("token").value.trim();
+    if(!token){ setStatus("Enter your Mapbox token first.","err"); return; }
+    setStatus("Locating “"+q+"”…");
+    geocodePlace(q, token).then(function(c){
+      if(!c){ setStatus("Couldn't find “"+q+"”.","err"); return; }
+      addMarkerAt(c[0], c[1], q);
+      $("markerPlace").value = "";
+      setStatus("Added marker “"+q+"”.","ok");
+    });
+  });
+  $("markerPlace").addEventListener("keydown", function(e){ if(e.key==="Enter") $("markerAdd").click(); });
+  $("markerPick").addEventListener("click", function(){
+    placingMarker = !placingMarker;
+    $("markerPick").textContent = placingMarker ? "Click the map…" : "Click map to place";
+    $("markerPick").classList.toggle("btn-primary", placingMarker);
+    if(map) map.getCanvas().style.cursor = placingMarker ? "crosshair" : "";
+    setStatus(placingMarker ? "Click anywhere on the map to drop a marker." : "", placingMarker?"ok":"");
+  });
+  ["markerStyle","markerSize","markerDark"].forEach(function(id){
+    $(id).addEventListener("change", function(){ renderMarkerLayers(); saveSettings(); });
+  });
+  $("markerSize").addEventListener("input", function(){ $("markerSizeVal").textContent = this.value+"px"; });
+  $("markersClear").addEventListener("click", function(){
+    if(!markers.length) return;
+    markers = []; renderMarkerList(); renderMarkerLayers();
+    if(map) renderLogoLayers();
+    saveSettings(); setStatus("Markers cleared.","ok");
+  });
+
   /* ================= logo overlay =================
      Three placements:
        float — screen-space, burned into PNG/video export (and previewed in the DOM)
@@ -974,19 +1317,30 @@
        pin   — a symbol layer at the area centroid; stays upright, fixed screen size */
   function logoMode(){ return $("logoMode").value; }
 
-  function is3DLogo(){ var m = logoMode(); return m === "billboard" || m === "pin3d"; }
+  function is3DLogo(){
+    var m = logoMode(); return m === "billboard" || m === "pin3d" || m === "scatter";
+  }
   function syncLogoUI(){
-    var has = !!logoDataUrl;
+    var has = !!logoDataUrl, m = logoMode(), d3 = is3DLogo();
     $("logoClear").disabled = !has;
     $("logoOpts").style.display = has ? "" : "none";
     $("logoPick").textContent = has ? "Replace image…" : "Choose image…";
-    $("logoPosWrap").style.display    = (logoMode()==="float") ? "" : "none";
-    $("logoHeightWrap").style.display = is3DLogo() ? "" : "none";
-    $("logoShadowWrap").style.display = is3DLogo() ? "" : "none";
-    $("logoModeHint").style.display   = is3DLogo() ? "" : "none";
-    $("logoSizeVal").textContent = $("logoSize").value + "%";
-    $("logoOpVal").textContent = $("logoOp").value + "%";
+    $("logoPosWrap").style.display     = (m==="float") ? "" : "none";
+    $("logoTilesWrap").style.display   = (m==="tiled") ? "" : "none";
+    $("logoHeightWrap").style.display  = (d3 && m!=="scatter") ? "" : "none";
+    $("logoDepthWrap").style.display   = d3 ? "" : "none";
+    $("logoBackWrap").style.display    = d3 ? "" : "none";
+    $("logoGlowWrap").style.display    = d3 ? "" : "none";
+    $("logoFaceCamWrap").style.display = d3 ? "" : "none";
+    $("logoShadowWrap").style.display  = d3 ? "" : "none";
+    $("logoModeHint").style.display    = d3 ? "" : "none";
+    $("logoSizeVal").textContent   = $("logoSize").value + "%";
+    $("logoOpVal").textContent     = $("logoOp").value + "%";
     $("logoHeightVal").textContent = $("logoHeight").value + "%";
+    $("logoDepthVal").textContent  = $("logoDepth").value + "%";
+    $("logoTilesVal").textContent  = $("logoTiles").value;
+    var lg = parseFloat($("logoGlow").value)||0;
+    $("logoGlowVal").textContent   = lg ? lg+"%" : "off";
     syncTags();
   }
 
@@ -1107,39 +1461,115 @@
     return cv;
   }
 
-  // Camera-facing upright quad, centred on the area, spanning altitudes z0..z1
-  function vQuad(g, halfW, z0, z1){
-    var dx = g.rx*halfW*g.s, dy = g.ry*halfW*g.s;
-    var x = g.mc.x, y = g.mc.y, zb = z0*g.s, zt = z1*g.s;
-    return [ x-dx,y-dy,zt, 0,1,   x+dx,y+dy,zt, 1,1,   x+dx,y+dy,zb, 1,0,
-             x-dx,y-dy,zt, 0,1,   x+dx,y+dy,zb, 1,0,   x-dx,y-dy,zb, 0,0 ];
-  }
-  // Flat quad lying on the ground (shadow)
-  function gQuad(g, halfW, halfH){
-    var x = g.mc.x, y = g.mc.y, a = halfW*g.s, b = halfH*g.s;
-    return [ x-a,y-b,0, 0,1,   x+a,y-b,0, 1,1,   x+a,y+b,0, 1,0,
-             x-a,y-b,0, 0,1,   x+a,y+b,0, 1,0,   x-a,y+b,0, 0,0 ];
-  }
-
-  // Everything the renderer needs for this frame, in metres/mercator
-  function logo3DGeom(){
-    if(!lastArea) return null;
-    var c, bb;
-    try{ c = turf.centroid(lastArea).geometry.coordinates; bb = turf.bbox(lastArea); }catch(e){ return null; }
-    var midLat = (bb[1]+bb[3])/2;
-    var widthM;
-    try{ widthM = turf.distance([bb[0],midLat], [bb[2],midLat], { units:"kilometers" }) * 1000; }catch(e){ return null; }
-    if(!isFinite(widthM) || widthM <= 0) return null;
-    var mc = mapboxgl.MercatorCoordinate.fromLngLat(c, 0);
+  /* --- vertex helpers. `f` is a local frame: origin + right/forward unit vectors,
+         all distances in metres, converted to mercator via f.s ------------- */
+  function frameAt(lngLat, faceCamera){
+    var mc = mapboxgl.MercatorCoordinate.fromLngLat(lngLat, 0);
     var s = mc.meterInMercatorCoordinateUnits();
-    var panelW = widthM * (parseFloat($("logoSize").value)/100) * 0.8;
-    var panelH = panelW / (logoAspect || 1);
-    var base = widthM * (parseFloat($("logoHeight").value)/100) * 0.30;
-    var bearing = ((map.getBearing()||0) * Math.PI) / 180;
+    var b = faceCamera ? (((map.getBearing()||0) * Math.PI)/180) : 0;
     return {
       mc:mc, s:s,
-      rx: Math.cos(bearing), ry: Math.sin(bearing),   // screen-right in mercator
-      panelW:panelW, panelH:panelH, base:base, widthM:widthM
+      rx: Math.cos(b),  ry: Math.sin(b),    // screen-right (or east when fixed)
+      fx: Math.sin(b),  fy: -Math.cos(b)    // away from camera (or north when fixed)
+    };
+  }
+  function P(f, u, v, z){   // u along right, v along forward, z altitude — metres
+    return [ f.mc.x + (f.rx*u + f.fx*v)*f.s,
+             f.mc.y + (f.ry*u + f.fy*v)*f.s,
+             z*f.s ];
+  }
+  function tri(out, a, b, c, uva, uvb, uvc){
+    out.push(a[0],a[1],a[2],uva[0],uva[1], b[0],b[1],b[2],uvb[0],uvb[1], c[0],c[1],c[2],uvc[0],uvc[1]);
+  }
+  function quad(out, a, b, c, d){   // a=TL b=TR c=BR d=BL
+    tri(out, a,b,c, [0,1],[1,1],[1,0]);
+    tri(out, a,c,d, [0,1],[1,0],[0,0]);
+  }
+  // Upright panel face at forward-offset `v`, spanning ±halfW and z0..z1
+  function panelFace(f, halfW, z0, z1, v){
+    var o = [];
+    quad(o, P(f,-halfW,v,z1), P(f,halfW,v,z1), P(f,halfW,v,z0), P(f,-halfW,v,z0));
+    return o;
+  }
+  // Flat quad on the ground (shadow), axis-aligned so it doesn't spin
+  function gQuad(f, halfW, halfH){
+    var o = [], x=f.mc.x, y=f.mc.y, a=halfW*f.s, b=halfH*f.s;
+    quad(o, [x-a,y-b,0], [x+a,y-b,0], [x+a,y+b,0], [x-a,y+b,0]);
+    return o;
+  }
+  // The four side walls of an extruded panel — this is what sells the 3D
+  function panelSides(f, halfW, z0, z1, d){
+    var o = [], v0 = -d/2, v1 = d/2;
+    // left, right, top, bottom
+    quad(o, P(f,-halfW,v1,z1), P(f,-halfW,v0,z1), P(f,-halfW,v0,z0), P(f,-halfW,v1,z0));
+    quad(o, P(f, halfW,v0,z1), P(f, halfW,v1,z1), P(f, halfW,v1,z0), P(f, halfW,v0,z0));
+    quad(o, P(f,-halfW,v1,z1), P(f, halfW,v1,z1), P(f, halfW,v0,z1), P(f,-halfW,v0,z1));
+    quad(o, P(f,-halfW,v0,z0), P(f, halfW,v0,z0), P(f, halfW,v1,z0), P(f,-halfW,v1,z0));
+    return o;
+  }
+
+  // A box of half-width `w` centred at sideways offset `ox` (used for billboard legs)
+  function panelSidesAt(f, ox, w, z0, z1, d){
+    var o = [], v0 = -d/2, v1 = d/2, a = ox-w, b = ox+w;
+    quad(o, P(f,a,v1,z1), P(f,a,v0,z1), P(f,a,v0,z0), P(f,a,v1,z0));
+    quad(o, P(f,b,v0,z1), P(f,b,v1,z1), P(f,b,v1,z0), P(f,b,v0,z0));
+    quad(o, P(f,a,v0,z1), P(f,b,v0,z1), P(f,b,v0,z0), P(f,a,v0,z0));
+    quad(o, P(f,b,v1,z1), P(f,a,v1,z1), P(f,a,v1,z0), P(f,b,v1,z0));
+    return o;
+  }
+  function hexToRGB(hex){
+    var h = String(hex||"#ffffff").replace("#","");
+    if(h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    var n = parseInt(h, 16);
+    if(!isFinite(n)) return [1,1,1];
+    return [ ((n>>16)&255)/255, ((n>>8)&255)/255, (n&255)/255 ];
+  }
+
+  // Where do 3D logos go? One per anchor.
+  function logoAnchors(){
+    var mode = logoMode(), out = [];
+    if(mode === "scatter"){
+      if(areaParts.length){
+        // one per source part (per state / per radius centre) — union would have
+        // merged neighbouring states into a single polygon
+        out = out.concat(areaParts);
+      } else {
+        // zips: fall back to polygon pieces, skipping slivers so tiny islands
+        // don't each collect a logo
+        try{
+          var pieces = turf.flatten(lastArea).features;
+          var areas = pieces.map(function(p){ try{ return turf.area(p); }catch(e){ return 0; } });
+          var mx = Math.max.apply(null, areas) || 0;
+          pieces.forEach(function(pf, i){
+            if(mx && areas[i] < mx*0.005) return;
+            try{ out.push(turf.pointOnFeature(pf).geometry.coordinates); }catch(e){}
+          });
+        }catch(e){}
+      }
+    } else if(mode === "billboard" || mode === "pin3d"){
+      try{ out.push(turf.pointOnFeature(lastArea).geometry.coordinates); }catch(e){}
+    }
+    // logo-style markers always render, whatever the placement mode
+    markers.forEach(function(m){ if(m.style === "logo") out.push([m.lng, m.lat]); });
+    return out;
+  }
+
+  // Shared metrics (metres) for this frame
+  function logo3DMetrics(){
+    if(!lastArea) return null;
+    var bb; try{ bb = turf.bbox(lastArea); }catch(e){ return null; }
+    var midLat = (bb[1]+bb[3])/2, widthM;
+    try{ widthM = turf.distance([bb[0],midLat],[bb[2],midLat],{units:"kilometers"})*1000; }catch(e){ return null; }
+    if(!isFinite(widthM) || widthM <= 0) return null;
+    var mode = logoMode();
+    var scale = (parseFloat($("logoSize").value)/100) * (mode === "scatter" ? 0.30 : 0.80);
+    var panelW = widthM * scale;
+    return {
+      widthM: widthM,
+      panelW: panelW,
+      panelH: panelW / (logoAspect || 1),
+      base:   widthM * (parseFloat($("logoHeight").value)/100) * 0.30,
+      depth:  panelW * (parseFloat($("logoDepth").value)/100) * 0.25
     };
   }
 
@@ -1184,18 +1614,26 @@
       },
       render: function(gl, matrix){
         if(!ready || !logoImg || !lastArea) return;
+        var anchors = logoAnchors();
+        if(!anchors.length) return;
+        var M = logo3DMetrics(); if(!M) return;
+
         var mode = logoMode();
-        if(mode !== "billboard" && mode !== "pin3d") return;
-        var g = logo3DGeom(); if(!g) return;
         var op = parseFloat($("logoOp").value)/100;
+        var faceCam = $("logoFaceCam").checked;
+        var backCol = hexToRGB($("logoBackColor").value);
+        var backStyle = $("logoBack").value;
+        var glowPct = parseFloat($("logoGlow").value)/100;
+        var isPin = (mode === "pin3d");
 
         gl.useProgram(prog);
         gl.uniformMatrix4fv(uMat, false, matrix);
         gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.depthMask(false);          // translucent: test depth, don't write it
 
-        function draw(verts, texture, color, opacity){
+        function draw(verts, texture, color, opacity, additive){
+          if(!verts.length) return;
+          gl.blendFunc(gl.SRC_ALPHA, additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
           gl.bindBuffer(gl.ARRAY_BUFFER, buf);
           gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.DYNAMIC_DRAW);
           gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 20, 0);
@@ -1209,26 +1647,62 @@
           gl.uniform1f(uOpacity, opacity);
           gl.drawArrays(gl.TRIANGLES, 0, verts.length/5);
         }
+        function shade(rgb, k, a){ return [rgb[0]*k, rgb[1]*k, rgb[2]*k, a==null?1:a]; }
 
-        // 1 · ground shadow, squashed so it reads as lying flat
-        if($("logoShadow").checked){
-          var sw = g.panelW * 0.5;
-          draw(gQuad(g, sw, sw*0.5), shTex, null, op*0.85);
+        for(var ai=0; ai<anchors.length; ai++){
+          var f = frameAt(anchors[ai], faceCam);
+          var hw = M.panelW/2, z0 = M.base, z1 = M.base + M.panelH, d = M.depth;
+          var pad = M.panelW * (isPin ? 0.05 : 0.07);
+
+          // 1 · ground shadow — offset slightly so it reads as cast, not painted
+          if($("logoShadow").checked){
+            var sw = M.panelW * (isPin ? 0.42 : 0.62);
+            draw(gQuad(f, sw, sw*0.42), shTex, null, op*0.8);
+          }
+
+          // 2 · glow halo behind the panel (additive, so it blooms)
+          if(glowPct > 0){
+            var gw = M.panelW * (0.7 + 1.1*glowPct);
+            var gh = gw / (logoAspect||1);
+            var gz = (z0+z1)/2;
+            draw(panelFace(f, gw/2, gz-gh/2, gz+gh/2, d/2 + M.panelW*0.004),
+                 shTex, null, op*glowPct*0.9, true);
+          }
+
+          // 3 · support: chunky twin posts for a billboard, thin stem for a pin
+          if(z0 > 0){
+            var postCol = shade([0.20,0.21,0.24], 1, 1);
+            if(isPin){
+              draw(panelSides(f, M.panelW*0.012, 0, z0 + M.panelH*0.05, M.panelW*0.012),
+                   null, shade([0.12,0.13,0.15],1), op);
+            } else {
+              [-hw*0.55, hw*0.55].forEach(function(ox){
+                var pf = { mc:f.mc, s:f.s, rx:f.rx, ry:f.ry, fx:f.fx, fy:f.fy };
+                // shift the frame origin sideways for each leg
+                var o = [];
+                var w = M.panelW*0.035;
+                o = o.concat(panelSidesAt(pf, ox, w, 0, z0 + M.panelH*0.06, w));
+                draw(o, null, postCol, op);
+              });
+            }
+          }
+
+          // 4 · the board itself, extruded. Side walls get darker shading so the
+          //     thickness reads as real geometry rather than a flat card.
+          if(backStyle !== "none"){
+            draw(panelSides(f, hw+pad, z0-pad, z1+pad, d), null, shade(backCol, 0.62), op);
+            draw(panelFace(f, hw+pad, z0-pad, z1+pad,  d/2), null, shade(backCol, 0.78), op);  // back
+            draw(panelFace(f, hw+pad, z0-pad, z1+pad, -d/2), null, shade(backCol, 1.0),  op);  // front
+          } else {
+            draw(panelSides(f, hw, z0, z1, d), null, shade([0.75,0.75,0.78], 0.6), op);
+          }
+
+          // 5 · the logo, sitting just proud of the front face
+          draw(panelFace(f, hw, z0, z1, -d/2 - M.panelW*0.002), tex, null, op);
         }
-        // 2 · post (billboard) or thin stem (pin)
-        if(g.base > 0){
-          var isBb = (mode === "billboard");
-          draw(vQuad(g, g.panelW*(isBb ? 0.045 : 0.014), 0, g.base + g.panelH*0.04),
-               null, isBb ? [0.17,0.18,0.21,1] : [0.11,0.12,0.14,1], op);
-        }
-        // 3 · white backing board behind the logo
-        var pad = g.panelW * (mode === "billboard" ? 0.06 : 0.04);
-        draw(vQuad(g, g.panelW/2 + pad, g.base - pad, g.base + g.panelH + pad),
-             null, [1,1,1,0.96], op);
-        // 4 · the logo itself
-        draw(vQuad(g, g.panelW/2, g.base, g.base + g.panelH), tex, null, op);
 
         gl.depthMask(true);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       }
     };
   }
@@ -1238,23 +1712,78 @@
     ["logo-flat-src","logo-pin-src"].forEach(function(s){ try{ if(map.getSource(s)) map.removeSource(s); }catch(e){} });
   }
 
+  // Bake a repeating logo grid into one canvas, clipped to the actual service-area
+  // polygon. Baking it (rather than using fill-pattern) keeps the tiles locked to
+  // the ground, so they don't slide around during the zoom-in.
+  function buildTiledLogoURL(){
+    if(!logoImg || !lastArea) return null;
+    try{
+      var bb = turf.bbox(lastArea);
+      var lonSpan = bb[2]-bb[0], latSpan = bb[3]-bb[1];
+      if(!(lonSpan>0) || !(latSpan>0)) return null;
+      var midLat = (bb[1]+bb[3])/2;
+      var aspect = (lonSpan*Math.cos(midLat*Math.PI/180))/latSpan;
+      var W = 2048, H = Math.max(1, Math.round(W/aspect));
+      if(H > 4096){ H = 4096; W = Math.max(1, Math.round(H*aspect)); }
+      var cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+      var ctx = cv.getContext("2d");
+      var toPx = function(c){ return [ (c[0]-bb[0])/lonSpan*W, (bb[3]-c[1])/latSpan*H ]; };
+
+      ctx.save();
+      ctx.beginPath();
+      turf.flatten(lastArea).features.forEach(function(pf){
+        pf.geometry.coordinates.forEach(function(ring){
+          ring.forEach(function(c,i){ var p = toPx(c); i ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1]); });
+          ctx.closePath();
+        });
+      });
+      ctx.clip();
+
+      var n = Math.max(1, parseInt($("logoTiles").value,10) || 4);
+      var tw = W/n, th = tw/(logoAspect||1);
+      var gapX = tw*1.30, gapY = th*1.45;
+      var row = 0;
+      for(var y = -th; y < H+th; y += gapY){
+        var off = (row % 2) ? gapX*0.5 : 0;   // brick offset so it doesn't grid up
+        for(var x = -tw; x < W+tw; x += gapX){
+          ctx.drawImage(logoImg, x+off+tw*0.08, y+th*0.08, tw*0.84, th*0.84);
+        }
+        row++;
+      }
+      ctx.restore();
+      return { url: cv.toDataURL("image/png"),
+               coords: [[bb[0],bb[3]],[bb[2],bb[3]],[bb[2],bb[1]],[bb[0],bb[1]]] };
+    }catch(e){ return null; }
+  }
+
   function renderLogoLayers(){
     if(!map) return;
     removeLogoLayers();
     if(!logoDataUrl || !lastArea) return;
     var mode = logoMode(), op = parseFloat($("logoOp").value)/100;
 
-    if(mode === "flat"){
-      var co = logoFlatCoords(); if(!co) return;
+    if(mode === "flat" || mode === "tiled"){
+      var src = null;
+      if(mode === "tiled"){
+        var t = buildTiledLogoURL();
+        if(t) src = { url:t.url, coords:t.coords };
+      } else {
+        var co = logoFlatCoords();
+        if(co) src = { url:logoDataUrl, coords:co };
+      }
+      if(!src) return;
       try{
-        map.addSource("logo-flat-src", { type:"image", url:logoDataUrl, coordinates:co });
+        map.addSource("logo-flat-src", { type:"image", url:src.url, coordinates:src.coords });
         map.addLayer({ id:"logo-flat", type:"raster", source:"logo-flat-src",
           paint:{ "raster-opacity":op, "raster-fade-duration":0 } },
           map.getLayer("area-line") ? "area-line" : undefined);
       }catch(e){}
-    } else if(mode === "billboard" || mode === "pin3d"){
+    } else if(mode === "billboard" || mode === "pin3d" || mode === "scatter"){
       try{ map.addLayer(makeLogo3DLayer()); }
       catch(e){ setStatus("This browser couldn't start the 3D logo layer.","err"); }
+    } else if(markers.some(function(m){ return m.style === "logo"; })){
+      // float/none placement, but logo markers still need the 3D layer
+      try{ map.addLayer(makeLogo3DLayer()); }catch(e){}
     }
     try{ map.triggerRepaint(); }catch(e){}
   }
@@ -1303,17 +1832,25 @@
     if(map) map.triggerRepaint();
     saveSettings();
   });
-  ["logoSize","logoOp","logoHeight"].forEach(function(id){
+  ["logoSize","logoOp","logoHeight","logoDepth","logoGlow","logoTiles"].forEach(function(id){
     $(id).addEventListener("input", function(){
-      $("logoSizeVal").textContent = $("logoSize").value + "%";
-      $("logoOpVal").textContent = $("logoOp").value + "%";
+      $("logoSizeVal").textContent   = $("logoSize").value + "%";
+      $("logoOpVal").textContent     = $("logoOp").value + "%";
       $("logoHeightVal").textContent = $("logoHeight").value + "%";
+      $("logoDepthVal").textContent  = $("logoDepth").value + "%";
+      $("logoTilesVal").textContent  = $("logoTiles").value;
+      var lg = parseFloat($("logoGlow").value)||0;
+      $("logoGlowVal").textContent   = lg ? lg+"%" : "off";
       syncFloatOverlay();
       // 3D geometry is rebuilt every frame from these values, so a repaint is
-      // all that's needed — no layer teardown.
+      // all that's needed — no layer teardown. Tiling has to re-bake its canvas.
       if(map){ if(is3DLogo()) map.triggerRepaint(); else renderLogoLayers(); }
     });
     $(id).addEventListener("change", saveSettings);
+  });
+  ["logoBack","logoBackColor","logoFaceCam"].forEach(function(id){
+    $(id).addEventListener("input", function(){ if(map) map.triggerRepaint(); });
+    $(id).addEventListener("change", function(){ if(map) map.triggerRepaint(); saveSettings(); });
   });
   window.addEventListener("resize", syncFloatOverlay);
 
@@ -1377,7 +1914,12 @@
       glow:glowAmt, island:islandPct, tilt:$("tilt").value, rot:$("rot").value,
       logo:logoDataUrl, logoMode:$("logoMode").value, logoPos:$("logoPos").value,
       logoSize:$("logoSize").value, logoOp:$("logoOp").value,
-      logoHeight:$("logoHeight").value, logoShadow:$("logoShadow").checked, handles:$("handles").value
+      logoHeight:$("logoHeight").value, logoShadow:$("logoShadow").checked, handles:$("handles").value,
+      logoDepth:$("logoDepth").value, logoBack:$("logoBack").value, logoBackColor:$("logoBackColor").value,
+      logoGlow:$("logoGlow").value, logoFaceCam:$("logoFaceCam").checked, logoTiles:$("logoTiles").value,
+      markers:markers, markerStyle:$("markerStyle").value, markerSize:$("markerSize").value,
+      markerDark:$("markerDark").checked, strokeAnim:$("strokeAnim").checked,
+      strokeStart:$("strokeStart").value, strokeSpan:$("strokeSpan").value
     };
     var btn = $("clientSave"); btn.disabled = true;
     setStatus("Saving “"+name+"”…");
@@ -1434,6 +1976,20 @@
     if(c.logoHeight) $("logoHeight").value = c.logoHeight;
     if(typeof c.logoShadow==="boolean") $("logoShadow").checked = c.logoShadow;
     if(c.handles){ $("handles").value = c.handles; $("handlesVal").textContent = c.handles; }
+    if(c.logoDepth) $("logoDepth").value = c.logoDepth;
+    if(c.logoBack) $("logoBack").value = c.logoBack;
+    if(c.logoBackColor) $("logoBackColor").value = c.logoBackColor;
+    if(c.logoGlow!=null) $("logoGlow").value = c.logoGlow;
+    if(typeof c.logoFaceCam==="boolean") $("logoFaceCam").checked = c.logoFaceCam;
+    if(c.logoTiles) $("logoTiles").value = c.logoTiles;
+    markers = Array.isArray(c.markers) ? c.markers : [];
+    if(c.markerStyle) $("markerStyle").value = c.markerStyle;
+    if(c.markerSize){ $("markerSize").value = c.markerSize; $("markerSizeVal").textContent = c.markerSize+"px"; }
+    if(typeof c.markerDark==="boolean") $("markerDark").checked = c.markerDark;
+    if(typeof c.strokeAnim==="boolean") $("strokeAnim").checked = c.strokeAnim;
+    if(c.strokeStart!=null) $("strokeStart").value = c.strokeStart;
+    if(c.strokeSpan!=null) $("strokeSpan").value = c.strokeSpan;
+    renderMarkerList(); syncStrokeUI();
     setLogo(c.logo || "");
     syncSrc(); syncStyleReadouts();
     if(srcMode==="states") ensureStates().catch(function(){});
@@ -1454,8 +2010,10 @@
       var p = PRESETS.filter(function(x){ return x.id===activePreset; })[0];
       $("styleTag").textContent = p ? p.label : (glowAmt ? "glow" : "custom");
       $("logoTag").textContent  = logoDataUrl ? logoMode() : "none";
+      $("markersTag").textContent = markers.length ? (markers.length + (markers.length===1?" marker":" markers")) : "none";
       var t = parseFloat($("tilt").value)||0, r = parseFloat($("rot").value)||0;
-      $("motionTag").textContent = $("vidDur").value + "s" + (t?" · "+t+"°":"") + (r?" · rot":"");
+      $("motionTag").textContent = $("vidDur").value + "s" + (t?" · "+t+"°":"")
+                                 + (r?" · rot":"") + ($("strokeAnim").checked?" · draw-on":"");
       $("exportTag").textContent = ({"4k":"4K","1440":"2K","1080":"HD"})[$("vidRes").value] + " · " + exportFps + "fps";
     }catch(e){}
   }
@@ -1522,9 +2080,13 @@
     var pad = parseFloat($("pad").value);
     if(pad > 0) area = turf.buffer(area, pad, { units:"miles", steps:16 });
     if($("smooth").checked) area = smoothPolygon(area);
-    var pts = [];
-    feats.forEach(function(f){ try{ pts.push(turf.centroid(f)); }catch(e){} });
-    return { area:area, points:turf.featureCollection(pts),
+    var pts = [], parts = [];
+    feats.forEach(function(f){
+      try{ pts.push(turf.centroid(f)); }catch(e){}
+      // pointOnFeature stays inside concave states; centroid can fall outside
+      try{ parts.push(turf.pointOnFeature(f).geometry.coordinates); }catch(e){}
+    });
+    return { area:area, points:turf.featureCollection(pts), parts:parts,
              label: names.length+" state"+(names.length>1?"s":"") };
   }
 
@@ -1548,6 +2110,7 @@
       var area = circles.length===1 ? circles[0] : turf.union(turf.featureCollection(circles));
       var pts = good.map(function(c){ return turf.point(c); });
       return { area:area, points:turf.featureCollection(pts), failed:failed,
+               parts: good.slice(),
                label: good.length+" center"+(good.length>1?"s":"")+"  ·  "+miles+" mi" };
     });
   }
@@ -1802,6 +2365,16 @@
   }
 
   function wireEdit(){
+    // marker placement takes priority over shape editing
+    map.on("click", function(e){
+      if(!placingMarker) return;
+      addMarkerAt(e.lngLat.lng, e.lngLat.lat, "");
+      placingMarker = false;
+      $("markerPick").textContent = "Click map to place";
+      $("markerPick").classList.remove("btn-primary");
+      map.getCanvas().style.cursor = "";
+      setStatus("Marker added — type its label in the list.","ok");
+    });
     map.on("mousedown", "edit-handles", function(e){
       if(!editing || editMode !== "move") return;
       e.preventDefault();
@@ -1851,6 +2424,7 @@
     baseArea = res.area;
     lastArea = dropSmallPieces(baseArea, islandPct);
     lastPoints = res.points;
+    areaParts = Array.isArray(res.parts) ? res.parts : [];
     updateIslandUI();
     function paint(){
       renderLayers(); syncLabel();
@@ -2064,6 +2638,23 @@
     syncTags();
   });
   ["tilt","rot"].forEach(function(id){ $(id).addEventListener("change", saveSettings); });
+
+  /* ---------- stroke animation controls ---------- */
+  function syncStrokeUI(){
+    $("strokeOpts").style.display = $("strokeAnim").checked ? "" : "none";
+    $("strokeStartVal").textContent = $("strokeStart").value + "%";
+    $("strokeSpanVal").textContent  = $("strokeSpan").value + "%";
+    syncTags();
+  }
+  $("strokeAnim").addEventListener("change", function(){
+    syncStrokeUI(); saveSettings();
+    // show the finished outline again when the animation is switched off
+    if(!this.checked) setStrokeProgress(1);
+  });
+  ["strokeStart","strokeSpan"].forEach(function(id){
+    $(id).addEventListener("input", syncStrokeUI);
+    $(id).addEventListener("change", saveSettings);
+  });
   $("vidStart").addEventListener("input", function(){
     var z = parseFloat(this.value);
     $("vidStartVal").textContent = z <= 3 ? "continent" : (z <= 4 ? "region" : "state");
@@ -2084,12 +2675,29 @@
     var rotDeg  = parseFloat($("rot").value)  || 0;
 
     $("preview").disabled = true; $("record").disabled = true;
-    function reEnable(){ $("preview").disabled = false; $("record").disabled = false; }
+    var strokeRaf = null;
+    function reEnable(){
+      $("preview").disabled = false; $("record").disabled = false;
+      if(strokeRaf) cancelAnimationFrame(strokeRaf);
+      setStrokeProgress(1);
+    }
+
+    var animStroke = $("strokeAnim").checked;
+    if(animStroke) setStrokeProgress(0);
 
     map.jumpTo({ center: end.center, zoom: startZoom, bearing: 0, pitch: 0 });
     map.once("idle", function(){
       map.flyTo({ center:end.center, zoom:endZoomForTilt(end.zoom, tiltDeg), bearing:rotDeg, pitch:tiltDeg,
                   duration:durMs, curve:1.42, essential:true });
+      if(animStroke){
+        // drive the draw-on off wall-clock so the preview matches the export
+        var t0 = performance.now();
+        (function tick(){
+          var t = Math.min(1, (performance.now()-t0)/durMs);
+          setStrokeProgress(strokeAt(t));
+          if(t < 1) strokeRaf = requestAnimationFrame(tick);
+        })();
+      }
       map.once("moveend", reEnable);
     });
     map.triggerRepaint();
@@ -2151,6 +2759,7 @@
       var e = easeInOut(t);
       var zoom = o.startZoom + (o.endZoom - o.startZoom) * e;
       map.jumpTo({ center:o.center, zoom:zoom, pitch:o.tiltDeg*e, bearing:o.rotDeg*e });
+      setStrokeProgress(strokeAt(t));   // deterministic draw-on, exact per frame
       await renderSettled();   // block until this frame is fully loaded & crisp
 
       ctx.drawImage(src, 0, 0, W, H);
@@ -2246,6 +2855,7 @@
       setStatus((err && err.message) || "Video export failed.", "err");
     }finally{
       restore();
+      setStrokeProgress(1);   // leave the finished outline on screen
       $("preview").disabled = false; $("record").disabled = false;
     }
   }
@@ -2255,7 +2865,8 @@
 
   /* ---------- boot ---------- */
   loadSettings(); syncSeg(); syncFpsSeg(); syncLabel(); syncCustomStyle(); syncSrc();
-  syncStyleReadouts(); syncLogoUI(); syncFloatOverlay();
+  syncStyleReadouts(); syncLogoUI(); syncFloatOverlay(); syncStrokeUI(); renderMarkerList();
+  $("markerSizeVal").textContent = $("markerSize").value+"px";
   $("tiltVal").textContent = parseFloat($("tilt").value) ? $("tilt").value+"°" : "off";
   $("rotVal").textContent = $("rot").value+"°";
   $("vidDurVal").textContent = $("vidDur").value+" s";
