@@ -121,6 +121,31 @@
   .status.err{color:var(--red)}
   .status.ok{color:#5fd08a}
 
+  /* collapsible sections */
+  details.sec{border-top:1px solid var(--line)}
+  details.sec:first-child{border-top:0}
+  details.sec>summary{
+    list-style:none;cursor:pointer;padding:14px 0 12px;user-select:none;
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-dim);display:flex;align-items:center;gap:9px;
+  }
+  details.sec>summary::-webkit-details-marker{display:none}
+  details.sec>summary::marker{content:""}
+  details.sec>summary:hover{color:var(--ink)}
+  details.sec[open]>summary{color:var(--ink)}
+  details.sec>summary .chev{
+    color:var(--ink-faint);font-size:8px;transition:transform .15s;display:inline-block;flex:none;
+  }
+  details.sec[open]>summary .chev{transform:rotate(90deg)}
+  details.sec>summary .tag{
+    margin-left:auto;font-size:9.5px;letter-spacing:.06em;color:var(--ink-faint);
+    text-transform:none;font-family:var(--mono);
+  }
+  .secbody{padding:2px 0 16px}
+
+  /* logo overlay preview on the map */
+  #logoOverlay{position:absolute;z-index:6;pointer-events:none;display:none;max-width:none}
+
   /* multi-select (states) */
   select.multi{height:168px;padding:5px;background-image:none;appearance:none;cursor:default}
   select.multi option{padding:5px 7px;border-radius:5px;font-size:12.5px}
@@ -178,201 +203,296 @@
   </div>
 
   <div class="scroll">
-    <div class="field">
-      <label class="lab" for="token">Mapbox public token</label>
-      <input type="password" id="token" placeholder="pk.eyJ1Ijoi..." autocomplete="off" spellcheck="false" />
-      <div class="hint">Starts with <b>pk.</b> Stored only in this browser. Get it at account.mapbox.com &rarr; tokens.</div>
-    </div>
 
-    <div class="field">
-      <label class="lab" for="clientSel">Saved clients</label>
-      <div class="clientrow">
-        <select id="clientSel"><option value="">— new / unsaved —</option></select>
-        <button class="iconbtn" id="clientSave" title="Save current name + zips + look">&#128190;</button>
-        <button class="iconbtn danger" id="clientDel" title="Delete selected client" disabled>&#128465;</button>
+    <details class="sec" id="secSetup" open>
+      <summary><span class="chev">&#9654;</span>Setup<span class="tag" id="setupTag"></span></summary>
+      <div class="secbody">
+        <div class="field">
+          <label class="lab" for="token">Mapbox public token</label>
+          <input type="password" id="token" placeholder="pk.eyJ1Ijoi..." autocomplete="off" spellcheck="false" />
+          <div class="hint">Starts with <b>pk.</b> Stored only in this browser. Get it at account.mapbox.com &rarr; tokens.</div>
+        </div>
+        <div class="field">
+          <label class="lab" for="clientSel">Saved clients</label>
+          <div class="clientrow">
+            <select id="clientSel"><option value="">— new / unsaved —</option></select>
+            <button class="iconbtn" id="clientSave" title="Save current setup as a client">&#128190;</button>
+            <button class="iconbtn danger" id="clientDel" title="Delete selected client" disabled>&#128465;</button>
+          </div>
+          <div class="hint">Saves everything — zips, look, logo. Shared with anyone on this URL.</div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label class="lab" for="area">Area name</label>
+          <input type="text" id="area" placeholder="Graber – STL" spellcheck="false" />
+        </div>
       </div>
-      <div class="hint">Save stores the area name, zips and current look. Pick one to reload it instantly.</div>
-    </div>
+    </details>
 
-    <div class="field">
-      <label class="lab" for="area">Area name</label>
-      <input type="text" id="area" placeholder="Graber – STL" spellcheck="false" />
-    </div>
+    <details class="sec" id="secArea" open>
+      <summary><span class="chev">&#9654;</span>Area<span class="tag" id="areaTag"></span></summary>
+      <div class="secbody">
+        <div class="field">
+          <div class="seg" id="srcSeg">
+            <button data-v="zips" class="on">Zips</button>
+            <button data-v="states">States</button>
+            <button data-v="radius">Radius</button>
+          </div>
+        </div>
 
-    <div class="field">
-      <label class="lab">Area source</label>
-      <div class="seg" id="srcSeg">
-        <button data-v="zips" class="on">Zips</button>
-        <button data-v="states">States</button>
-        <button data-v="radius">Radius</button>
+        <div class="field" id="srcZips" style="margin-bottom:0">
+          <label class="lab" for="zips">Zip codes</label>
+          <textarea id="zips" placeholder="63101, 63102 63103&#10;63104&#10;65201 ..."></textarea>
+          <div class="hint">Any separator works. Paste messy — it grabs every 5-digit code and de-dupes.</div>
+        </div>
+
+        <div class="field" id="srcStates" style="display:none;margin-bottom:0">
+          <div class="slabel"><label class="lab" style="margin:0" for="states">States</label><span class="val" id="statesVal">0 selected</span></div>
+          <select id="states" multiple class="multi"><option disabled>Loading…</option></select>
+          <div class="hint">&#8984;/Ctrl-click to pick several. Real boundaries, merged into one outline.</div>
+        </div>
+
+        <div class="field" id="srcRadius" style="display:none;margin-bottom:0">
+          <label class="lab" for="centers">Center locations</label>
+          <textarea id="centers" placeholder="Dubuque, IA&#10;Cedar Rapids, IA&#10;52001"></textarea>
+          <div class="hint">One per line — city, address or zip. Overlaps merge into one blob.</div>
+          <div class="slabel" style="margin-top:13px"><label class="lab" style="margin:0">Radius</label><span class="val" id="radiusVal">40 mi</span></div>
+          <input type="range" id="radius" min="5" max="250" step="5" value="40" />
+        </div>
       </div>
-    </div>
+    </details>
 
-    <div class="field" id="srcZips">
-      <label class="lab" for="zips">Zip codes</label>
-      <textarea id="zips" placeholder="63101, 63102 63103&#10;63104&#10;65201 ..."></textarea>
-      <div class="hint">Any separator works. Paste messy — it grabs every 5-digit code and de-dupes.</div>
-    </div>
+    <details class="sec" id="secShape">
+      <summary><span class="chev">&#9654;</span>Shape<span class="tag" id="shapeTag"></span></summary>
+      <div class="secbody">
+        <div class="tog" style="border-top:0">
+          <span>Smooth corners</span>
+          <label class="switch"><input type="checkbox" id="smooth" checked><span class="track"></span></label>
+        </div>
 
-    <div class="field" id="srcStates" style="display:none">
-      <div class="slabel"><label class="lab" style="margin:0" for="states">States</label><span class="val" id="statesVal">0 selected</span></div>
-      <select id="states" multiple class="multi"><option disabled>Loading…</option></select>
-      <div class="hint">&#8984;/Ctrl-click to pick several. Uses real state boundaries, merged into one outline.</div>
-    </div>
+        <div class="field" id="hullWrap" style="margin-top:15px">
+          <label class="lab">Hull type</label>
+          <div class="seg" id="hullSeg">
+            <button data-v="concave" class="on">Concave</button>
+            <button data-v="convex">Convex</button>
+          </div>
+        </div>
 
-    <div class="field" id="srcRadius" style="display:none">
-      <label class="lab" for="centers">Center locations</label>
-      <textarea id="centers" placeholder="Dubuque, IA&#10;Cedar Rapids, IA&#10;52001"></textarea>
-      <div class="hint">One per line — city, address or zip. Each gets a circle; overlaps merge into one blob.</div>
-      <div class="slabel" style="margin-top:13px"><label class="lab" style="margin:0">Radius</label><span class="val" id="radiusVal">40 mi</span></div>
-      <input type="range" id="radius" min="5" max="250" step="5" value="40" />
-    </div>
+        <div class="field" id="tightWrap">
+          <div class="slabel"><label class="lab" style="margin:0">Concave tightness</label><span class="val" id="tightVal">60 mi</span></div>
+          <input type="range" id="tight" min="20" max="200" step="5" value="60" />
+          <div class="hint">Lower = tighter. Too low can break the shape into pieces.</div>
+        </div>
 
-    <div class="field">
-      <label class="lab" for="style">Base map</label>
-      <select id="style">
-        <optgroup label="Modern (Apple/Google-like)">
-          <option value="mapbox://styles/mapbox/standard">Standard — clean 3D</option>
-          <option value="mapbox://styles/mapbox/standard-satellite">Standard satellite</option>
-        </optgroup>
-        <optgroup label="Classic">
-          <option value="mapbox://styles/mapbox/light-v11">Light (clean, for decks)</option>
-          <option value="mapbox://styles/mapbox/dark-v11">Dark</option>
-          <option value="mapbox://styles/mapbox/streets-v12">Streets</option>
-          <option value="mapbox://styles/mapbox/outdoors-v12">Outdoors (green)</option>
-          <option value="mapbox://styles/mapbox/navigation-day-v1">Navigation</option>
-          <option value="mapbox://styles/mapbox/satellite-streets-v12">Satellite</option>
-        </optgroup>
-        <optgroup label="Custom">
-          <option value="custom">Custom style URL…</option>
-        </optgroup>
-      </select>
-    </div>
+        <div class="field" id="padWrap">
+          <div class="slabel"><label class="lab" style="margin:0">Padding</label><span class="val" id="padVal">18 mi</span></div>
+          <input type="range" id="pad" min="0" max="60" step="2" value="18" />
+        </div>
 
-    <div class="field" id="customWrap" style="display:none">
-      <label class="lab" for="customStyle">Custom style URL</label>
-      <input type="text" id="customStyle" placeholder="mapbox://styles/bjauke-ppm/cmrtb6n…" spellcheck="false" autocomplete="off" />
-      <div class="hint">From Mapbox Studio &rarr; your style &rarr; Share &rarr; <b>Style URL</b>. Paste the <b>mapbox://styles/…</b> value. Your token must have access to it.</div>
-    </div>
+        <div class="field" id="islandWrap" style="display:none">
+          <div class="slabel"><label class="lab" style="margin:0">Drop small pieces</label><span class="val" id="islandVal">off</span></div>
+          <input type="range" id="island" min="0" max="60" step="1" value="0" />
+          <div class="hint">Removes islands smaller than this % of the biggest piece — cleans up states.</div>
+        </div>
 
-    <div class="field">
-      <label class="lab">Quick looks</label>
-      <div class="presets" id="presets"></div>
-      <div class="hint">One click sets base map + outline + fill. Tweak anything after.</div>
-    </div>
+        <div class="row">
+          <button class="btn btn-ghost" id="editToggle" style="margin-top:0" disabled>Edit points</button>
+          <button class="btn btn-ghost" id="resetShape" style="margin-top:0" disabled>Reset</button>
+        </div>
 
-    <div class="divider"></div>
-    <div class="grouptitle">Shape</div>
-
-    <div class="field">
-      <label class="lab">Hull type</label>
-      <div class="seg" id="hullSeg">
-        <button data-v="concave" class="on">Concave</button>
-        <button data-v="convex">Convex</button>
+        <div id="editTools" style="display:none">
+          <div class="field" style="margin-top:13px;margin-bottom:0">
+            <label class="lab">Click action</label>
+            <div class="seg" id="editModeSeg">
+              <button data-v="move" class="on">Move</button>
+              <button data-v="delete">Delete</button>
+            </div>
+            <div class="hint"><b>Move:</b> drag handles; click the outline to add one.<br><b>Delete:</b> click a handle to remove it &middot; shift-click removes its whole island.</div>
+          </div>
+        </div>
       </div>
-      <div class="hint">Concave hugs the real outline. Convex = simpler enclosing shape.</div>
-    </div>
+    </details>
 
-    <div class="field" id="tightWrap">
-      <div class="slabel"><label class="lab" style="margin:0">Concave tightness</label><span class="val" id="tightVal">60 mi</span></div>
-      <input type="range" id="tight" min="20" max="200" step="5" value="60" />
-      <div class="hint">Lower = tighter to the points. Too low can break into pieces — nudge up if the shape vanishes.</div>
-    </div>
+    <details class="sec" id="secStyle">
+      <summary><span class="chev">&#9654;</span>Style<span class="tag" id="styleTag"></span></summary>
+      <div class="secbody">
+        <div class="field">
+          <label class="lab">Quick looks <span style="color:var(--ink-faint);text-transform:none;letter-spacing:0">· area styling only</span></label>
+          <div class="presets" id="presets"></div>
+        </div>
 
-    <div class="field">
-      <div class="slabel"><label class="lab" style="margin:0">Padding</label><span class="val" id="padVal">18 mi</span></div>
-      <input type="range" id="pad" min="0" max="60" step="2" value="18" />
-      <div class="hint">Grows the outline outward and rounds the corners — the marker-circle look.</div>
-    </div>
+        <div class="field">
+          <label class="lab">Outline</label>
+          <div class="colorrow">
+            <input type="color" id="lineColor" value="#ff2d2d" />
+            <input type="range" id="lineW" min="1" max="14" step="0.5" value="4.5" style="flex:1" />
+            <span class="val" id="lineWVal" style="font-family:var(--mono);font-size:11px;color:var(--red);width:34px;text-align:right">4.5</span>
+          </div>
+        </div>
 
-    <div class="row">
-      <button class="btn btn-ghost" id="editToggle" style="margin-top:0" disabled>Edit shape</button>
-      <button class="btn btn-ghost" id="resetShape" style="margin-top:0" disabled>Reset</button>
-    </div>
-    <div class="hint" style="margin-top:8px">Drag a handle to reshape. Double-click a handle to delete it, click the outline to add one.</div>
+        <div class="field">
+          <div class="slabel"><label class="lab" style="margin:0">Glow</label><span class="val" id="glowVal">off</span></div>
+          <input type="range" id="glow" min="0" max="100" step="1" value="0" />
+          <div class="hint">Soft neon halo around the outline. Reads great on dark and satellite maps.</div>
+        </div>
 
-    <div class="divider"></div>
-    <div class="grouptitle">Style</div>
+        <div class="tog">
+          <span>Fill area</span>
+          <label class="switch"><input type="checkbox" id="fill"><span class="track"></span></label>
+        </div>
+        <div class="field" id="fillOpWrap" style="display:none;margin-top:13px">
+          <div class="slabel"><label class="lab" style="margin:0">Fill opacity</label><span class="val" id="fillOpVal">14%</span></div>
+          <input type="range" id="fillOp" min="0" max="100" step="1" value="14" />
+        </div>
 
-    <div class="tog">
-      <span>Smooth corners</span>
-      <label class="switch"><input type="checkbox" id="smooth" checked><span class="track"></span></label>
-    </div>
-    <div class="tog">
-      <span>Fill area</span>
-      <label class="switch"><input type="checkbox" id="fill"><span class="track"></span></label>
-    </div>
-    <div class="tog">
-      <span>Show zip points</span>
-      <label class="switch"><input type="checkbox" id="dots"><span class="track"></span></label>
-    </div>
-    <div class="tog">
-      <span>Show name on map</span>
-      <label class="switch"><input type="checkbox" id="showLabel" checked><span class="track"></span></label>
-    </div>
-    <div class="tog">
-      <span>Declutter map <span style="color:var(--ink-faint);font-size:11px">· hide POIs/transit</span></span>
-      <label class="switch"><input type="checkbox" id="declutter"><span class="track"></span></label>
-    </div>
+        <div class="divider" style="margin:17px 0"></div>
 
-    <div class="field" style="margin-top:17px">
-      <label class="lab">Outline</label>
-      <div class="colorrow">
-        <input type="color" id="lineColor" value="#ff2d2d" />
-        <input type="range" id="lineW" min="2" max="10" step="0.5" value="4.5" style="flex:1" />
-        <span class="val" id="lineWVal" style="font-family:var(--mono);font-size:11px;color:var(--red);width:34px;text-align:right">4.5</span>
+        <div class="field">
+          <label class="lab" for="style">Base map</label>
+          <select id="style">
+            <optgroup label="Modern (Apple/Google-like)">
+              <option value="mapbox://styles/mapbox/standard">Standard — clean 3D</option>
+              <option value="mapbox://styles/mapbox/standard-satellite">Standard satellite</option>
+            </optgroup>
+            <optgroup label="Classic">
+              <option value="mapbox://styles/mapbox/light-v11">Light (clean, for decks)</option>
+              <option value="mapbox://styles/mapbox/dark-v11">Dark</option>
+              <option value="mapbox://styles/mapbox/streets-v12">Streets</option>
+              <option value="mapbox://styles/mapbox/outdoors-v12">Outdoors (green)</option>
+              <option value="mapbox://styles/mapbox/navigation-day-v1">Navigation</option>
+              <option value="mapbox://styles/mapbox/satellite-streets-v12">Satellite</option>
+            </optgroup>
+            <optgroup label="Custom">
+              <option value="custom">Custom style URL…</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="field" id="customWrap" style="display:none">
+          <label class="lab" for="customStyle">Custom style URL</label>
+          <input type="text" id="customStyle" placeholder="mapbox://styles/you/cmrtb6n…" spellcheck="false" autocomplete="off" />
+          <div class="hint">Studio &rarr; your style &rarr; Share &rarr; <b>Style URL</b>.</div>
+        </div>
+
+        <div class="tog">
+          <span>Declutter map <span style="color:var(--ink-faint);font-size:11px">· hide POIs/transit</span></span>
+          <label class="switch"><input type="checkbox" id="declutter"><span class="track"></span></label>
+        </div>
+        <div class="tog">
+          <span>Show zip points</span>
+          <label class="switch"><input type="checkbox" id="dots"><span class="track"></span></label>
+        </div>
+        <div class="tog">
+          <span>Show name on map</span>
+          <label class="switch"><input type="checkbox" id="showLabel" checked><span class="track"></span></label>
+        </div>
       </div>
-    </div>
+    </details>
 
-    <div class="divider"></div>
-    <div class="grouptitle">Motion — zoom-in video</div>
+    <details class="sec" id="secLogo">
+      <summary><span class="chev">&#9654;</span>Logo<span class="tag" id="logoTag"></span></summary>
+      <div class="secbody">
+        <div class="field">
+          <input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="display:none" />
+          <div class="clientrow">
+            <button class="btn btn-ghost" id="logoPick" style="margin-top:0;flex:1">Choose image…</button>
+            <button class="iconbtn danger" id="logoClear" title="Remove logo" disabled>&#128465;</button>
+          </div>
+          <div class="hint" id="logoHint">Transparent PNG works best. Downscaled to 512px and saved with the client.</div>
+        </div>
 
-    <div class="field">
-      <div class="slabel"><label class="lab" style="margin:0">Duration</label><span class="val" id="vidDurVal">7 s</span></div>
-      <input type="range" id="vidDur" min="3" max="14" step="0.5" value="7" />
-    </div>
-    <div class="field">
-      <div class="slabel"><label class="lab" style="margin:0">Start wide</label><span class="val" id="vidStartVal">continent</span></div>
-      <input type="range" id="vidStart" min="2.2" max="5.5" step="0.1" value="3.2" />
-      <div class="hint">Left = start further out (more cities appear on the way in).</div>
-    </div>
-    <div class="tog" style="border-top:1px solid var(--line)">
-      <span>Cinematic tilt</span>
-      <label class="switch"><input type="checkbox" id="vidTilt"><span class="track"></span></label>
-    </div>
-
-    <div class="row" style="margin-top:14px">
-      <div class="field" style="margin-bottom:0">
-        <label class="lab">Resolution</label>
-        <select id="vidRes">
-          <option value="4k">4K · 2160p</option>
-          <option value="1440">2K · 1440p</option>
-          <option value="1080">HD · 1080p</option>
-        </select>
+        <div id="logoOpts" style="display:none">
+          <div class="field">
+            <label class="lab" for="logoMode">Placement</label>
+            <select id="logoMode">
+              <option value="float">Floating — pinned to the frame</option>
+              <option value="flat">Flat — lies on the area (tilts in 3D)</option>
+              <option value="pin">Pin — marker at area center</option>
+            </select>
+          </div>
+          <div class="field" id="logoPosWrap">
+            <label class="lab" for="logoPos">Position</label>
+            <select id="logoPos">
+              <option value="tr">Top right</option>
+              <option value="tl">Top left</option>
+              <option value="br">Bottom right</option>
+              <option value="bl">Bottom left</option>
+              <option value="c">Center</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="slabel"><label class="lab" style="margin:0">Size</label><span class="val" id="logoSizeVal">18%</span></div>
+            <input type="range" id="logoSize" min="3" max="70" step="1" value="18" />
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <div class="slabel"><label class="lab" style="margin:0">Opacity</label><span class="val" id="logoOpVal">100%</span></div>
+            <input type="range" id="logoOp" min="10" max="100" step="1" value="100" />
+          </div>
+        </div>
       </div>
-      <div class="field" style="margin-bottom:0">
-        <label class="lab">Format</label>
-        <select id="vidFormat">
-          <option value="landscape">16:9 landscape</option>
-          <option value="vertical">9:16 vertical</option>
-          <option value="square">1:1 square</option>
-        </select>
-      </div>
-    </div>
+    </details>
 
-    <div class="field" style="margin:14px 0 0">
-      <label class="lab">Frame rate</label>
-      <div class="seg" id="fpsSeg">
-        <button data-v="30" class="on">30 fps</button>
-        <button data-v="60">60 fps</button>
+    <details class="sec" id="secMotion">
+      <summary><span class="chev">&#9654;</span>Motion<span class="tag" id="motionTag"></span></summary>
+      <div class="secbody">
+        <div class="field">
+          <div class="slabel"><label class="lab" style="margin:0">Duration</label><span class="val" id="vidDurVal">7 s</span></div>
+          <input type="range" id="vidDur" min="3" max="14" step="0.5" value="7" />
+        </div>
+        <div class="field">
+          <div class="slabel"><label class="lab" style="margin:0">Start wide</label><span class="val" id="vidStartVal">continent</span></div>
+          <input type="range" id="vidStart" min="2.2" max="5.5" step="0.1" value="3.2" />
+          <div class="hint">Left = start further out (more cities appear on the way in).</div>
+        </div>
+        <div class="field">
+          <div class="slabel"><label class="lab" style="margin:0">Cinematic tilt</label><span class="val" id="tiltVal">off</span></div>
+          <input type="range" id="tilt" min="0" max="70" step="1" value="0" />
+          <div class="hint">Camera pitch at the end of the zoom. 0 = straight down.</div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <div class="slabel"><label class="lab" style="margin:0">Rotate</label><span class="val" id="rotVal">0&deg;</span></div>
+          <input type="range" id="rot" min="-90" max="90" step="5" value="0" />
+          <div class="hint">Bearing at the end. 0 = north up.</div>
+        </div>
       </div>
-    </div>
+    </details>
 
-    <div class="row" style="margin-top:14px">
-      <button class="btn btn-ghost" id="preview" style="margin-top:0" disabled>Preview</button>
-      <button class="btn btn-primary" id="record" disabled>Record video</button>
-    </div>
-    <div class="hint" style="margin-top:9px" id="recHint">Draw an area first. Exports a true-4K, constant-frame-rate MP4 — drop it straight into your ad editor.</div>
+    <details class="sec" id="secExport">
+      <summary><span class="chev">&#9654;</span>Export<span class="tag" id="exportTag"></span></summary>
+      <div class="secbody">
+        <div class="row">
+          <div class="field" style="margin-bottom:0">
+            <label class="lab">Resolution</label>
+            <select id="vidRes">
+              <option value="4k">4K · 2160p</option>
+              <option value="1440">2K · 1440p</option>
+              <option value="1080">HD · 1080p</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label class="lab">Format</label>
+            <select id="vidFormat">
+              <option value="landscape">16:9 landscape</option>
+              <option value="vertical">9:16 vertical</option>
+              <option value="square">1:1 square</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field" style="margin:14px 0 0">
+          <label class="lab">Frame rate</label>
+          <div class="seg" id="fpsSeg">
+            <button data-v="30" class="on">30 fps</button>
+            <button data-v="60">60 fps</button>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:14px">
+          <button class="btn btn-ghost" id="preview" style="margin-top:0" disabled>Preview</button>
+          <button class="btn btn-primary" id="record" disabled>Record video</button>
+        </div>
+        <div class="hint" style="margin-top:9px" id="recHint">True-4K constant-frame-rate MP4 — drops straight into your ad editor.</div>
+      </div>
+    </details>
   </div>
 
   <div class="actions">
@@ -385,6 +505,7 @@
 <main class="stage">
   <div id="map"></div>
   <div class="arealabel" id="mapLabel"></div>
+  <img id="logoOverlay" alt="" />
   <div class="badge" id="badge"></div>
   <div class="empty" id="empty">
     <div>
@@ -425,7 +546,16 @@
       srcMode: srcMode,
       states: statesGeo ? selectedStates() : pendingStates,
       centers: $("centers").value,
-      radius: $("radius").value
+      radius: $("radius").value,
+      glow: glowAmt,
+      island: islandPct,
+      tilt: $("tilt").value,
+      rot: $("rot").value,
+      logo: logoDataUrl,
+      logoMode: $("logoMode").value,
+      logoPos: $("logoPos").value,
+      logoSize: $("logoSize").value,
+      logoOp: $("logoOp").value
     };
     try{ localStorage.setItem(STORE, JSON.stringify(s)); }catch(e){}
   }
@@ -454,6 +584,17 @@
     if(s.states) pendingStates = s.states;
     if(s.centers) $("centers").value = s.centers;
     if(s.radius){ $("radius").value = s.radius; $("radiusVal").textContent = s.radius+" mi"; }
+    if(s.glow!=null) glowAmt = s.glow;
+    if(s.island!=null){ islandPct = s.island; $("island").value = islandPct; $("islandVal").textContent = islandPct ? ("< "+islandPct+"%") : "off"; }
+    // migrate the old on/off "Cinematic tilt" checkbox to the new angle slider
+    if(s.tilt!=null) $("tilt").value = s.tilt;
+    else if(s.vidTilt === true) $("tilt").value = 50;
+    if(s.rot!=null) $("rot").value = s.rot;
+    if(s.logoMode) $("logoMode").value = s.logoMode;
+    if(s.logoPos) $("logoPos").value = s.logoPos;
+    if(s.logoSize) $("logoSize").value = s.logoSize;
+    if(s.logoOp) $("logoOp").value = s.logoOp;
+    if(s.logo) setLogo(s.logo);
   }
 
   /* ---------- hull type segmented control ---------- */
@@ -490,9 +631,11 @@
 
   /* ---------- map ---------- */
   var map = null, lastArea = null, lastPoints = null;
-  var fillOpacity = 0.14, activePreset = "";
+  var fillOpacity = 0.14, activePreset = "", glowAmt = 0;
   var srcMode = "zips", pendingStates = [], statesGeo = null;
   var editing = false, editRings = null, baseArea = null, dragging = null;
+  var editMode = "move", islandPct = 0;
+  var logoDataUrl = "", logoImg = null, logoAspect = 1;
 
   function initMap(){
     var token = $("token").value.trim();
@@ -625,24 +768,45 @@
   }
 
   /* ---------- render onto the map ---------- */
-  function renderLayers(){
-    ["area-fill","area-line","zip-dots"].forEach(function(l){ if(map.getLayer(l)) map.removeLayer(l); });
-    ["area-src","points-src"].forEach(function(s){ if(map.getSource(s)) map.removeSource(s); });
+  var AREA_LAYERS  = ["area-fill","logo-flat","area-glow2","area-glow1","area-line","zip-dots","logo-pin"];
+  var AREA_SOURCES = ["area-src","points-src","logo-flat-src","logo-pin-src"];
 
+  function renderLayers(){
+    AREA_LAYERS.forEach(function(l){ if(map.getLayer(l)) map.removeLayer(l); });
+    AREA_SOURCES.forEach(function(s){ if(map.getSource(s)) map.removeSource(s); });
+
+    var col = $("lineColor").value, lw = parseFloat($("lineW").value);
     map.addSource("area-src", { type:"geojson", data:lastArea });
+
     if($("fill").checked){
       map.addLayer({ id:"area-fill", type:"fill", source:"area-src",
-        paint:{ "fill-color":$("lineColor").value, "fill-opacity":fillOpacity } });
+        paint:{ "fill-color":col, "fill-opacity":fillOpacity } });
     }
+
+    // Glow = two widened, blurred copies of the outline stacked underneath it.
+    // line-blur is a real Mapbox paint prop, so this renders on the GPU and
+    // survives the 4K export path unchanged.
+    var g = glowAmt / 100;
+    if(g > 0){
+      map.addLayer({ id:"area-glow2", type:"line", source:"area-src",
+        layout:{ "line-cap":"round", "line-join":"round" },
+        paint:{ "line-color":col, "line-width":lw*(1+5.0*g), "line-blur":lw*(1+4.0*g), "line-opacity":0.30*g } });
+      map.addLayer({ id:"area-glow1", type:"line", source:"area-src",
+        layout:{ "line-cap":"round", "line-join":"round" },
+        paint:{ "line-color":col, "line-width":lw*(1+2.2*g), "line-blur":lw*(0.5+1.6*g), "line-opacity":0.45*g } });
+    }
+
     map.addLayer({ id:"area-line", type:"line", source:"area-src",
       layout:{ "line-cap":"round", "line-join":"round" },
-      paint:{ "line-color":$("lineColor").value, "line-width":parseFloat($("lineW").value), "line-opacity":0.95 } });
+      paint:{ "line-color":col, "line-width":lw, "line-opacity":0.95 } });
 
     map.addSource("points-src", { type:"geojson", data:lastPoints });
     if($("dots").checked){
       map.addLayer({ id:"zip-dots", type:"circle", source:"points-src",
-        paint:{ "circle-radius":3.2, "circle-color":$("lineColor").value, "circle-stroke-width":1, "circle-stroke-color":"#fff", "circle-opacity":0.85 } });
+        paint:{ "circle-radius":3.2, "circle-color":col, "circle-stroke-width":1, "circle-stroke-color":"#fff", "circle-opacity":0.85 } });
     }
+
+    renderLogoLayers();
 
     // keep edit handles above the freshly re-added area layers
     if(editing && map.getLayer("edit-handles")){ try{ map.moveLayer("edit-handles"); }catch(e){} }
@@ -662,9 +826,35 @@
   }
   $("area").addEventListener("input", syncLabel);
   $("showLabel").addEventListener("change", syncLabel);
-  $("fill").addEventListener("change", function(){ if(lastArea) renderLayers(); });
+  $("fill").addEventListener("change", function(){ syncStyleReadouts(); clearPreset(); if(lastArea) renderLayers(); });
   $("dots").addEventListener("change", function(){ if(lastArea) renderLayers(); });
   $("lineColor").addEventListener("input", function(){ clearPreset(); if(lastArea) renderLayers(); });
+
+  /* ---------- fill opacity + glow ---------- */
+  function syncStyleReadouts(){
+    $("fillOpWrap").style.display = $("fill").checked ? "" : "none";
+    $("fillOpVal").textContent = Math.round(fillOpacity*100) + "%";
+    $("fillOp").value = Math.round(fillOpacity*100);
+    $("glow").value = glowAmt;
+    $("glowVal").textContent = glowAmt ? glowAmt + "%" : "off";
+    $("lineWVal").textContent = $("lineW").value;
+    syncTags();
+  }
+  $("fillOp").addEventListener("input", function(){
+    fillOpacity = (parseFloat(this.value)||0)/100;
+    $("fillOpVal").textContent = Math.round(fillOpacity*100) + "%";
+    clearPreset();
+    // cheap live update — no need to rebuild every layer for an opacity nudge
+    if(map && map.getLayer("area-fill")) map.setPaintProperty("area-fill","fill-opacity",fillOpacity);
+  });
+  $("fillOp").addEventListener("change", saveSettings);
+  $("glow").addEventListener("input", function(){
+    glowAmt = parseFloat(this.value)||0;
+    $("glowVal").textContent = glowAmt ? glowAmt + "%" : "off";
+    clearPreset();
+    if(lastArea) renderLayers();   // glow adds/removes layers, so a rebuild is needed
+  });
+  $("glow").addEventListener("change", saveSettings);
 
   /* ================= base-map resolution (incl. custom URLs) ================= */
   // The <select> holds preset style ids; picking "custom" defers to the pasted URL.
@@ -712,15 +902,18 @@
     if(map && url){ setStatus("Switching base map…"); map.setStyle(url); }
   });
 
-  /* ================= quick-look presets ================= */
-  var M = "mapbox://styles/mapbox/";
+  /* ================= quick-look presets =================
+     These only restyle the highlighted area (colour / weight / fill / glow).
+     They deliberately never touch the base map — pick that separately. */
   var PRESETS = [
-    { id:"brandred", label:"Brand Red", dot:"#ff2d2d", style:M+"light-v11",          declutter:false, look:{lineColor:"#ff2d2d", lineW:4.5, fill:false, fillOp:0.14, smooth:true, dots:false} },
-    { id:"mono",     label:"Mono",      dot:"#14161b", style:M+"light-v11",          declutter:true,  look:{lineColor:"#14161b", lineW:3.5, fill:false, fillOp:0.10, smooth:true, dots:false} },
-    { id:"emerald",  label:"Emerald",   dot:"#12b886", style:M+"light-v11",          declutter:true,  look:{lineColor:"#0f9d6e", lineW:4.5, fill:true,  fillOp:0.10, smooth:true, dots:false} },
-    { id:"skyline",  label:"Skyline",   dot:"#2f6bff", style:M+"standard",           declutter:true,  look:{lineColor:"#2f6bff", lineW:5.0, fill:true,  fillOp:0.10, smooth:true, dots:false} },
-    { id:"midnight", label:"Midnight",  dot:"#ffb020", style:M+"dark-v11",           declutter:true,  look:{lineColor:"#ffb020", lineW:5.0, fill:true,  fillOp:0.12, smooth:true, dots:false} },
-    { id:"satellite",label:"Satellite", dot:"#ffffff", style:M+"standard-satellite", declutter:true,  look:{lineColor:"#ffffff", lineW:5.0, fill:false, fillOp:0.12, smooth:true, dots:false} }
+    { id:"brandred", label:"Brand Red", dot:"#ff2d2d", look:{lineColor:"#ff2d2d", lineW:4.5, fill:false, fillOp:0.14, glow:0}  },
+    { id:"neon",     label:"Neon",      dot:"#ff3b3b", look:{lineColor:"#ff3b3b", lineW:3.5, fill:true,  fillOp:0.10, glow:75} },
+    { id:"halo",     label:"Halo",      dot:"#ffffff", look:{lineColor:"#ffffff", lineW:3.0, fill:true,  fillOp:0.08, glow:55} },
+    { id:"emerald",  label:"Emerald",   dot:"#12b886", look:{lineColor:"#0fbf83", lineW:4.5, fill:true,  fillOp:0.12, glow:25} },
+    { id:"skyline",  label:"Skyline",   dot:"#2f6bff", look:{lineColor:"#2f6bff", lineW:5.0, fill:true,  fillOp:0.12, glow:40} },
+    { id:"amber",    label:"Amber",     dot:"#ffb020", look:{lineColor:"#ffb020", lineW:5.0, fill:true,  fillOp:0.10, glow:50} },
+    { id:"mono",     label:"Mono",      dot:"#14161b", look:{lineColor:"#14161b", lineW:3.0, fill:false, fillOp:0.10, glow:0}  },
+    { id:"ghost",    label:"Ghost",     dot:"#c9ced6", look:{lineColor:"#ffffff", lineW:2.0, fill:true,  fillOp:0.06, glow:18} }
   ];
   function renderPresets(){
     var host = $("presets"); if(!host) return;
@@ -733,26 +926,210 @@
       host.appendChild(b);
     });
   }
-  function clearPreset(){ if(activePreset){ activePreset = ""; renderPresets(); } }
+  function clearPreset(){ if(activePreset){ activePreset = ""; renderPresets(); syncTags(); } }
   function applyPreset(p){
     activePreset = p.id;
     var lk = p.look;
     $("lineColor").value = lk.lineColor;
-    $("lineW").value = lk.lineW; $("lineWVal").textContent = lk.lineW;
-    if(map && map.getLayer("area-line")) map.setPaintProperty("area-line","line-width",lk.lineW);
+    $("lineW").value = lk.lineW;
     $("fill").checked = lk.fill;
     fillOpacity = lk.fillOp;
-    $("smooth").checked = lk.smooth;
-    $("dots").checked = lk.dots;
-    $("declutter").checked = p.declutter;
-    var styleChanged = ($("style").value !== p.style);
-    $("style").value = p.style; syncCustomStyle();
+    glowAmt = lk.glow;
+    syncStyleReadouts();
     renderPresets(); saveSettings();
-    if(map){
-      if(styleChanged){ setStatus("Applying “"+p.label+"”…"); map.setStyle(p.style); } // style.load → applyLook + renderLayers
-      else { applyLook(); if(lastArea) renderLayers(); }
+    if(map && lastArea) renderLayers();
+  }
+
+  /* ================= logo overlay =================
+     Three placements:
+       float — screen-space, burned into PNG/video export (and previewed in the DOM)
+       flat  — a Mapbox `image` source pinned to 4 lng/lat corners, so it lies on
+               the ground and tilts/rotates with the camera in 3D
+       pin   — a symbol layer at the area centroid; stays upright, fixed screen size */
+  function logoMode(){ return $("logoMode").value; }
+
+  function syncLogoUI(){
+    var has = !!logoDataUrl;
+    $("logoClear").disabled = !has;
+    $("logoOpts").style.display = has ? "" : "none";
+    $("logoPick").textContent = has ? "Replace image…" : "Choose image…";
+    $("logoPosWrap").style.display = (logoMode()==="float") ? "" : "none";
+    $("logoSizeVal").textContent = $("logoSize").value + "%";
+    $("logoOpVal").textContent = $("logoOp").value + "%";
+    syncTags();
+  }
+
+  // Read a file, downscale to <=512px so it stays small enough to store with a client.
+  function readLogoFile(file){
+    return new Promise(function(resolve, reject){
+      var fr = new FileReader();
+      fr.onerror = function(){ reject(new Error("Couldn't read that file.")); };
+      fr.onload = function(){
+        var img = new Image();
+        img.onerror = function(){ reject(new Error("That file isn't a readable image. Try a PNG.")); };
+        img.onload = function(){
+          var w = img.naturalWidth, h = img.naturalHeight;
+          if(!w || !h){ reject(new Error("That image has no fixed size (common with SVG). Export it as a PNG first.")); return; }
+          var MAX = 512, s = Math.min(1, MAX/Math.max(w,h));
+          var cw = Math.max(1, Math.round(w*s)), ch = Math.max(1, Math.round(h*s));
+          var cv = document.createElement("canvas"); cv.width = cw; cv.height = ch;
+          cv.getContext("2d").drawImage(img, 0, 0, cw, ch);
+          resolve(cv.toDataURL("image/png"));
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  function setLogo(dataUrl){
+    logoDataUrl = dataUrl || "";
+    if(!logoDataUrl){
+      logoImg = null; syncLogoUI(); syncFloatOverlay();
+      if(map) renderLogoLayers();
+      return Promise.resolve();
+    }
+    return new Promise(function(resolve){
+      var im = new Image();
+      im.onload = function(){
+        logoImg = im;
+        logoAspect = (im.naturalWidth / im.naturalHeight) || 1;
+        syncLogoUI(); syncFloatOverlay();
+        if(map) renderLogoLayers();
+        resolve();
+      };
+      im.onerror = function(){ logoImg = null; resolve(); };
+      im.src = logoDataUrl;
+    });
+  }
+
+  // on-screen preview for float mode (exports draw it onto the canvas instead)
+  function syncFloatOverlay(){
+    var el = $("logoOverlay");
+    if(!logoDataUrl || logoMode() !== "float"){ el.style.display = "none"; return; }
+    var stage = document.querySelector(".stage");
+    var sw = stage.clientWidth || 800;
+    var size = sw * (parseFloat($("logoSize").value)/100);
+    var m = sw * 0.035, pos = $("logoPos").value;
+    el.src = logoDataUrl;
+    el.style.display = "block";
+    el.style.width = size + "px";
+    el.style.height = "auto";
+    el.style.opacity = (parseFloat($("logoOp").value)/100);
+    el.style.left = el.style.right = el.style.top = el.style.bottom = "auto";
+    el.style.transform = "none";
+    if(pos==="tl"){ el.style.left=m+"px"; el.style.top=m+"px"; }
+    else if(pos==="tr"){ el.style.right=m+"px"; el.style.top=m+"px"; }
+    else if(pos==="bl"){ el.style.left=m+"px"; el.style.bottom=m+"px"; }
+    else if(pos==="br"){ el.style.right=m+"px"; el.style.bottom=m+"px"; }
+    else { el.style.left="50%"; el.style.top="50%"; el.style.transform="translate(-50%,-50%)"; }
+  }
+
+  // 4 ground corners for flat mode, aspect-corrected for latitude
+  function logoFlatCoords(){
+    try{
+      var bb = turf.bbox(lastArea);
+      var cx = (bb[0]+bb[2])/2, cy = (bb[1]+bb[3])/2;
+      var frac = (parseFloat($("logoSize").value)/100) * 2;   // 50% ≈ full bbox width
+      var lw = (bb[2]-bb[0]) * frac;
+      // screen width ∝ lon·cos(lat), so this keeps the logo's aspect ratio true
+      var lh = lw * Math.cos(cy*Math.PI/180) / (logoAspect || 1);
+      var x0=cx-lw/2, x1=cx+lw/2, y0=cy-lh/2, y1=cy+lh/2;
+      return [[x0,y1],[x1,y1],[x1,y0],[x0,y0]];   // TL, TR, BR, BL
+    }catch(e){ return null; }
+  }
+
+  function removeLogoLayers(){
+    ["logo-flat","logo-pin"].forEach(function(l){ try{ if(map.getLayer(l)) map.removeLayer(l); }catch(e){} });
+    ["logo-flat-src","logo-pin-src"].forEach(function(s){ try{ if(map.getSource(s)) map.removeSource(s); }catch(e){} });
+  }
+
+  function renderLogoLayers(){
+    if(!map) return;
+    removeLogoLayers();
+    if(!logoDataUrl || !lastArea) return;
+    var mode = logoMode(), op = parseFloat($("logoOp").value)/100;
+
+    if(mode === "flat"){
+      var co = logoFlatCoords(); if(!co) return;
+      try{
+        map.addSource("logo-flat-src", { type:"image", url:logoDataUrl, coordinates:co });
+        map.addLayer({ id:"logo-flat", type:"raster", source:"logo-flat-src",
+          paint:{ "raster-opacity":op, "raster-fade-duration":0 } },
+          map.getLayer("area-line") ? "area-line" : undefined);
+      }catch(e){}
+    } else if(mode === "pin"){
+      if(!logoImg) return;
+      try{
+        if(map.hasImage("logo-icon")) map.removeImage("logo-icon");
+        map.addImage("logo-icon", logoImg);
+      }catch(e){ return; }
+      var c; try{ c = turf.centroid(lastArea); }catch(e){ return; }
+      // icon-size is a multiplier on the image's own pixel size; derive it from the
+      // CSS width so the logo keeps the same relative size at 4K export
+      var cssW = map.getCanvas().clientWidth || 800;
+      var target = cssW * (parseFloat($("logoSize").value)/100);
+      var iconSize = target / (logoImg.naturalWidth || 512);
+      try{
+        map.addSource("logo-pin-src", { type:"geojson", data:turf.featureCollection([c]) });
+        map.addLayer({ id:"logo-pin", type:"symbol", source:"logo-pin-src",
+          layout:{ "icon-image":"logo-icon", "icon-size":iconSize,
+                   "icon-allow-overlap":true, "icon-ignore-placement":true, "icon-anchor":"center" },
+          paint:{ "icon-opacity":op } });
+      }catch(e){}
     }
   }
+
+  // burned into PNG + every video frame (float mode only — the others are on the map)
+  function drawLogoOnCtx(ctx, W, H){
+    if(!logoImg || logoMode() !== "float") return;
+    var iw = W * (parseFloat($("logoSize").value)/100);
+    var ih = iw / (logoAspect || 1);
+    var m = W * 0.035, pos = $("logoPos").value, x, y;
+    if(pos==="tl"){ x=m; y=m; }
+    else if(pos==="tr"){ x=W-m-iw; y=m; }
+    else if(pos==="bl"){ x=m; y=H-m-ih; }
+    else if(pos==="br"){ x=W-m-iw; y=H-m-ih; }
+    else { x=(W-iw)/2; y=(H-ih)/2; }
+    var prev = ctx.globalAlpha;
+    ctx.globalAlpha = parseFloat($("logoOp").value)/100;
+    ctx.drawImage(logoImg, x, y, iw, ih);
+    ctx.globalAlpha = prev;
+  }
+  function drawOverlays(ctx, W, H, name){
+    drawLabelOnCtx(ctx, W, H, name);
+    drawLogoOnCtx(ctx, W, H);
+  }
+
+  $("logoPick").addEventListener("click", function(){ $("logoFile").click(); });
+  $("logoFile").addEventListener("change", function(){
+    var f = this.files && this.files[0]; if(!f) return;
+    setStatus("Loading logo…");
+    readLogoFile(f)
+      .then(setLogo)
+      .then(function(){ saveSettings(); setStatus("Logo added.","ok"); })
+      .catch(function(err){ setStatus(err.message, "err"); })
+      .then(function(){ $("logoFile").value = ""; });
+  });
+  $("logoClear").addEventListener("click", function(){
+    setLogo("").then(function(){ saveSettings(); setStatus("Logo removed.","ok"); });
+  });
+  $("logoMode").addEventListener("change", function(){
+    syncLogoUI(); syncFloatOverlay();
+    if(map) renderLogoLayers();
+    saveSettings();
+  });
+  $("logoPos").addEventListener("change", function(){ syncFloatOverlay(); saveSettings(); });
+  ["logoSize","logoOp"].forEach(function(id){
+    $(id).addEventListener("input", function(){
+      $("logoSizeVal").textContent = $("logoSize").value + "%";
+      $("logoOpVal").textContent = $("logoOp").value + "%";
+      syncFloatOverlay();
+      if(map) renderLogoLayers();
+    });
+    $(id).addEventListener("change", saveSettings);
+  });
+  window.addEventListener("resize", syncFloatOverlay);
 
   /* ================= saved clients (server-backed via /api/clients) ================= */
   var CLIENTS_API = "/api/clients";
@@ -810,7 +1187,10 @@
       declutter:$("declutter").checked, hull:hullType,
       tight:$("tight").value, pad:$("pad").value, preset:activePreset,
       srcMode:srcMode, states:(statesGeo?selectedStates():pendingStates),
-      centers:$("centers").value, radius:$("radius").value
+      centers:$("centers").value, radius:$("radius").value,
+      glow:glowAmt, island:islandPct, tilt:$("tilt").value, rot:$("rot").value,
+      logo:logoDataUrl, logoMode:$("logoMode").value, logoPos:$("logoPos").value,
+      logoSize:$("logoSize").value, logoOp:$("logoOp").value
     };
     var btn = $("clientSave"); btn.disabled = true;
     setStatus("Saving “"+name+"”…");
@@ -856,7 +1236,16 @@
         syncStatesVal();
       }
     }
-    syncSrc();
+    if(c.glow!=null) glowAmt = c.glow;
+    if(c.island!=null){ islandPct = c.island; $("island").value = islandPct; $("islandVal").textContent = islandPct ? ("< "+islandPct+"%") : "off"; }
+    if(c.tilt!=null){ $("tilt").value = c.tilt; $("tiltVal").textContent = parseFloat(c.tilt) ? c.tilt+"°" : "off"; }
+    if(c.rot!=null){ $("rot").value = c.rot; $("rotVal").textContent = c.rot+"°"; }
+    if(c.logoMode) $("logoMode").value = c.logoMode;
+    if(c.logoPos) $("logoPos").value = c.logoPos;
+    if(c.logoSize) $("logoSize").value = c.logoSize;
+    if(c.logoOp) $("logoOp").value = c.logoOp;
+    setLogo(c.logo || "");
+    syncSrc(); syncStyleReadouts();
     if(srcMode==="states") ensureStates().catch(function(){});
     activePreset = c.preset || ""; renderPresets(); syncLabel(); saveSettings();
     if(map && c.style && c.style !== ($("style").value)){ /* style set above */ }
@@ -865,6 +1254,21 @@
 
   /* ---------- status ---------- */
   function setStatus(msg, cls){ var s=$("status"); s.textContent=msg||""; s.className="status"+(cls?" "+cls:""); }
+
+  /* ---------- collapsed-section summaries ---------- */
+  function syncTags(){
+    try{
+      $("areaTag").textContent = srcMode==="zips"   ? (parseZips($("zips").value).length + " zips")
+                               : srcMode==="states" ? ((statesGeo?selectedStates().length:(pendingStates||[]).length) + " states")
+                               : ($("radius").value + " mi");
+      var p = PRESETS.filter(function(x){ return x.id===activePreset; })[0];
+      $("styleTag").textContent = p ? p.label : (glowAmt ? "glow" : "custom");
+      $("logoTag").textContent  = logoDataUrl ? logoMode() : "none";
+      var t = parseFloat($("tilt").value)||0, r = parseFloat($("rot").value)||0;
+      $("motionTag").textContent = $("vidDur").value + "s" + (t?" · "+t+"°":"") + (r?" · rot":"");
+      $("exportTag").textContent = ({"4k":"4K","1440":"2K","1080":"HD"})[$("vidRes").value] + " · " + exportFps + "fps";
+    }catch(e){}
+  }
 
   /* ---------- draw ---------- */
   /* ================= area source: zips | states | radius ================= */
@@ -1028,12 +1432,33 @@
     if(map.getSource("area-src")) map.getSource("area-src").setData(lastArea);
     if(map.getSource("edit-src")) map.getSource("edit-src").setData(handleFC());
   }
+  function syncEditModeSeg(){
+    var btns = $("editModeSeg").querySelectorAll("button");
+    for(var i=0;i<btns.length;i++){ btns[i].classList.toggle("on", btns[i].dataset.v===editMode); }
+    if(map && map.getLayer("edit-handles")){
+      var del = (editMode === "delete");
+      try{
+        map.setPaintProperty("edit-handles","circle-stroke-color", del ? "#ff2d2d" : $("lineColor").value);
+        map.setPaintProperty("edit-handles","circle-color", del ? "#3a1414" : "#fff");
+      }catch(e){}
+    }
+  }
+  $("editModeSeg").addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b) return;
+    editMode = b.dataset.v; syncEditModeSeg();
+    setStatus(editMode==="delete"
+      ? "Delete mode — click handles to remove them, shift-click to drop a whole island."
+      : "Move mode — drag handles, click the outline to add one.", "ok");
+  });
+
   function enterEdit(){
     if(!lastArea || !map) return;
     editRings = ringsFrom(simplifyForEdit(lastArea));
     if(!editRings.length){ setStatus("This shape can't be edited.","err"); return; }
     editing = true;
-    $("editToggle").textContent = "Done editing";
+    editMode = "move";
+    $("editToggle").textContent = "Done";
+    $("editTools").style.display = "";
     map.doubleClickZoom.disable();
     if(map.getSource("edit-src")) map.getSource("edit-src").setData(handleFC());
     else map.addSource("edit-src", { type:"geojson", data:handleFC() });
@@ -1042,12 +1467,14 @@
         paint:{ "circle-radius":6, "circle-color":"#fff",
                 "circle-stroke-width":2.5, "circle-stroke-color":$("lineColor").value } });
     }
+    syncEditModeSeg();
     refreshEdit();
-    setStatus("Drag handles to reshape · double-click one to delete · click the outline to add.","ok");
+    setStatus(editRings.length + " piece" + (editRings.length>1?"s":"") + " · drag handles to reshape.","ok");
   }
   function exitEdit(silent){
     editing = false;
-    $("editToggle").textContent = "Edit shape";
+    $("editToggle").textContent = "Edit points";
+    $("editTools").style.display = "none";
     if(map){
       map.doubleClickZoom.enable();
       if(map.getLayer("edit-handles")) map.removeLayer("edit-handles");
@@ -1059,11 +1486,48 @@
   $("resetShape").addEventListener("click", function(){
     if(!baseArea) return;
     if(editing) exitEdit(true);
-    editRings = null; lastArea = baseArea;
+    editRings = null;
+    lastArea = dropSmallPieces(baseArea, islandPct);
     renderLayers();
     setStatus("Shape reset to the generated outline.","ok");
   });
   $("smooth").addEventListener("change", function(){ if(editing) refreshEdit(); });
+
+  /* ---------- drop disconnected islands (states pick up a lot of these) ---------- */
+  function dropSmallPieces(f, pct){
+    if(!pct || !f) return f;
+    try{
+      var flat = turf.flatten(f);
+      if(flat.features.length < 2) return f;
+      var areas = flat.features.map(function(pf){ try{ return turf.area(pf); }catch(e){ return 0; } });
+      var max = Math.max.apply(null, areas);
+      if(!max) return f;
+      var keep = flat.features.filter(function(pf,i){ return areas[i] >= max*(pct/100); });
+      if(!keep.length) return f;
+      return keep.length===1 ? keep[0] : turf.featureCollection(keep);
+    }catch(e){ return f; }
+  }
+  function pieceCount(f){
+    try{ return turf.flatten(f).features.length; }catch(e){ return 1; }
+  }
+  function updateIslandUI(){
+    var n = baseArea ? pieceCount(baseArea) : 1;
+    $("islandWrap").style.display = (baseArea && n > 1) ? "" : "none";
+  }
+  $("island").addEventListener("input", function(){
+    islandPct = parseFloat(this.value) || 0;
+    $("islandVal").textContent = islandPct ? ("< " + islandPct + "%") : "off";
+  });
+  $("island").addEventListener("change", function(){
+    if(!baseArea) return;
+    if(editing) exitEdit(true);
+    editRings = null;
+    lastArea = dropSmallPieces(baseArea, islandPct);
+    renderLayers();
+    saveSettings();
+    var kept = pieceCount(lastArea), all = pieceCount(baseArea);
+    setStatus(kept < all ? ("Kept "+kept+" of "+all+" pieces.") : "All pieces kept.", "ok");
+  });
 
   // planar distance is plenty for picking the nearest segment at these scales
   function segDist(p,a,b){
@@ -1085,14 +1549,38 @@
     editRings[best.r].splice(best.i+1, 0, pt);
     refreshEdit();
   }
+  // remove one handle, or the whole island if it's down to a degenerate ring
+  function deleteHandle(r, i, wholePiece){
+    if(!editRings || !editRings[r]) return;
+    if(wholePiece){
+      if(editRings.length > 1){
+        editRings.splice(r, 1); refreshEdit();
+        setStatus("Island removed · " + editRings.length + " left.","ok");
+      } else setStatus("That's the only piece left.","err");
+      return;
+    }
+    var ring = editRings[r];
+    if(ring.length > 4){ ring.splice(i, 1); refreshEdit(); }
+    else if(editRings.length > 1){
+      editRings.splice(r, 1); refreshEdit();
+      setStatus("Piece got too small — removed it.","ok");
+    }
+    else setStatus("Each shape needs at least 4 handles.","err");
+  }
+
   function wireEdit(){
     map.on("mousedown", "edit-handles", function(e){
-      if(!editing) return;
+      if(!editing || editMode !== "move") return;
       e.preventDefault();
       var p = e.features && e.features[0]; if(!p) return;
       dragging = { r:p.properties.r, i:p.properties.i };
       map.dragPan.disable();
       map.getCanvas().style.cursor = "grabbing";
+    });
+    map.on("click", "edit-handles", function(e){
+      if(!editing || editMode !== "delete") return;
+      var p = e.features && e.features[0]; if(!p) return;
+      deleteHandle(p.properties.r, p.properties.i, !!(e.originalEvent && e.originalEvent.shiftKey));
     });
     map.on("mousemove", function(e){
       if(!editing || !dragging) return;
@@ -1104,18 +1592,18 @@
       if(!dragging) return;
       dragging = null; map.dragPan.enable(); map.getCanvas().style.cursor = "";
     });
-    map.on("mouseenter", "edit-handles", function(){ if(editing && !dragging) map.getCanvas().style.cursor = "grab"; });
+    map.on("mouseenter", "edit-handles", function(){
+      if(editing && !dragging) map.getCanvas().style.cursor = (editMode==="delete") ? "pointer" : "grab";
+    });
     map.on("mouseleave", "edit-handles", function(){ if(editing && !dragging) map.getCanvas().style.cursor = ""; });
     map.on("dblclick", "edit-handles", function(e){
       if(!editing) return;
       e.preventDefault();
       var p = e.features && e.features[0]; if(!p) return;
-      var ring = editRings[p.properties.r];
-      if(ring && ring.length > 4){ ring.splice(p.properties.i, 1); refreshEdit(); }
-      else setStatus("Each shape needs at least 4 handles.","err");
+      deleteHandle(p.properties.r, p.properties.i, false);
     });
     map.on("click", "area-line", function(e){
-      if(!editing || dragging) return;
+      if(!editing || dragging || editMode !== "move") return;
       // ignore clicks that landed on a handle (that's a drag/delete, not an insert)
       if(map.queryRenderedFeatures(e.point, { layers:["edit-handles"] }).length) return;
       insertVertexNear([e.lngLat.lng, e.lngLat.lat]);
@@ -1127,7 +1615,10 @@
     if(!res.area) throw new Error("Couldn't build a shape from that.");
     if(editing) exitEdit(true);
     editRings = null;
-    lastArea = res.area; baseArea = res.area; lastPoints = res.points;
+    baseArea = res.area;
+    lastArea = dropSmallPieces(baseArea, islandPct);
+    lastPoints = res.points;
+    updateIslandUI();
     function paint(){
       renderLayers(); syncLabel();
       $("empty").style.display = "none";
@@ -1211,8 +1702,10 @@
       badge: $("badge").style.display,
       fade: map._fadeDuration
     };
+    saved.logoOverlay = $("logoOverlay").style.display;
     $("mapLabel").style.display = "none";
     $("badge").style.display = "none";
+    $("logoOverlay").style.display = "none";   // float logo is burned into the canvas instead
     try{ map._fadeDuration = 0; }catch(e){}
 
     var scale = Math.min(stage.clientWidth / cssW, stage.clientHeight / cssH);
@@ -1224,14 +1717,18 @@
     mapEl.style.transformOrigin = "0 0";
     mapEl.style.transform = "scale(" + scale + ")";
     map.resize();
+    renderLogoLayers();   // pin icon-size is derived from CSS width, so re-derive it
 
     return function restore(){
       mapEl.style.cssText = saved.mapCss;
       stage.style.overflow = saved.stageOverflow;
       $("mapLabel").style.display = saved.label;
       $("badge").style.display = saved.badge;
+      $("logoOverlay").style.display = saved.logoOverlay;
       try{ map._fadeDuration = saved.fade; }catch(e){}
       map.resize();
+      renderLogoLayers();
+      syncFloatOverlay();
     };
   }
 
@@ -1311,7 +1808,7 @@
         out.width = W; out.height = H;
         var ctx = out.getContext("2d");
         ctx.drawImage(src, 0, 0);
-        if($("showLabel").checked){ drawLabelOnCtx(ctx, W, H, $("area").value.trim()); }
+        drawOverlays(ctx, W, H, $("showLabel").checked ? $("area").value.trim() : "");
         var a = document.createElement("a");
         a.download = ($("area").value.trim() || "service-area").replace(/[^a-z0-9]+/gi,"-").replace(/^-|-$/g,"") + ".png";
         a.href = out.toDataURL("image/png");
@@ -1323,7 +1820,17 @@
   });
 
   /* ---------- motion: cinematic zoom-in + video ---------- */
-  $("vidDur").addEventListener("input", function(){ $("vidDurVal").textContent = this.value+" s"; });
+  $("vidDur").addEventListener("input", function(){ $("vidDurVal").textContent = this.value+" s"; syncTags(); });
+  $("tilt").addEventListener("input", function(){
+    var v = parseFloat(this.value)||0;
+    $("tiltVal").textContent = v ? v+"°" : "off";
+    syncTags();
+  });
+  $("rot").addEventListener("input", function(){
+    $("rotVal").textContent = (parseFloat(this.value)||0)+"°";
+    syncTags();
+  });
+  ["tilt","rot"].forEach(function(id){ $(id).addEventListener("change", saveSettings); });
   $("vidStart").addEventListener("input", function(){
     var z = parseFloat(this.value);
     $("vidStartVal").textContent = z <= 3 ? "continent" : (z <= 4 ? "region" : "state");
@@ -1340,18 +1847,25 @@
     if(!end){ setStatus("Couldn't frame the area.","err"); return; }
     var durMs = parseFloat($("vidDur").value) * 1000;
     var startZoom = parseFloat($("vidStart").value);
-    var tilt = $("vidTilt").checked;
+    var tiltDeg = parseFloat($("tilt").value) || 0;
+    var rotDeg  = parseFloat($("rot").value)  || 0;
 
     $("preview").disabled = true; $("record").disabled = true;
     function reEnable(){ $("preview").disabled = false; $("record").disabled = false; }
 
     map.jumpTo({ center: end.center, zoom: startZoom, bearing: 0, pitch: 0 });
     map.once("idle", function(){
-      map.flyTo({ center:end.center, zoom:end.zoom, bearing:0, pitch:tilt?50:0,
+      map.flyTo({ center:end.center, zoom:endZoomForTilt(end.zoom, tiltDeg), bearing:rotDeg, pitch:tiltDeg,
                   duration:durMs, curve:1.42, essential:true });
       map.once("moveend", reEnable);
     });
     map.triggerRepaint();
+  }
+
+  // cameraForBounds assumes a flat, north-up camera. Pitching pushes the far edge
+  // of the area out of frame, so ease the final zoom back a touch as tilt grows.
+  function endZoomForTilt(z, tiltDeg){
+    return z - (Math.max(0, tiltDeg) / 70) * 0.45;
   }
 
   /* ---------- record: deterministic frame-by-frame 4K encode ---------- */
@@ -1403,11 +1917,11 @@
       var t = N === 1 ? 1 : i/(N-1);
       var e = easeInOut(t);
       var zoom = o.startZoom + (o.endZoom - o.startZoom) * e;
-      map.jumpTo({ center:o.center, zoom:zoom, pitch: o.tilt ? 50*e : 0, bearing:0 });
+      map.jumpTo({ center:o.center, zoom:zoom, pitch:o.tiltDeg*e, bearing:o.rotDeg*e });
       await renderSettled();   // block until this frame is fully loaded & crisp
 
       ctx.drawImage(src, 0, 0, W, H);
-      if(name) drawLabelOnCtx(ctx, W, H, name);
+      drawOverlays(ctx, W, H, name);
 
       var frame = new VideoFrame(cv, { timestamp: i * usPerFrame, duration: usPerFrame });
       encoder.encode(frame, { keyFrame: (i % fps) === 0 });
@@ -1435,7 +1949,7 @@
       var ctx = cv.getContext("2d", { alpha:false });
       var src = map.getCanvas();
       var raf;
-      (function draw(){ ctx.drawImage(src,0,0,W,H); if(o.name) drawLabelOnCtx(ctx,W,H,o.name); raf = requestAnimationFrame(draw); })();
+      (function draw(){ ctx.drawImage(src,0,0,W,H); drawOverlays(ctx, W, H, o.name); raf = requestAnimationFrame(draw); })();
 
       var stream = cv.captureStream(fps);
       var mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9"
@@ -1454,7 +1968,7 @@
       map.jumpTo({ center:o.center, zoom:o.startZoom, pitch:0, bearing:0 });
       map.once("idle", function(){
         rec.start();
-        map.flyTo({ center:o.center, zoom:o.endZoom, pitch:o.tilt?50:0, bearing:0, duration:o.durS*1000, curve:1.42, essential:true });
+        map.flyTo({ center:o.center, zoom:o.endZoom, pitch:o.tiltDeg, bearing:o.rotDeg, duration:o.durS*1000, curve:1.42, essential:true });
         map.once("moveend", function(){ setTimeout(function(){ if(rec.state !== "inactive") rec.stop(); }, 500); });
       });
       map.triggerRepaint();
@@ -1468,7 +1982,8 @@
     var fps = parseInt(exportFps, 10) || 30;
     var durS = parseFloat($("vidDur").value);
     var startZoom = parseFloat($("vidStart").value);
-    var tilt = $("vidTilt").checked;
+    var tiltDeg = parseFloat($("tilt").value) || 0;
+    var rotDeg  = parseFloat($("rot").value)  || 0;
     var name = ($("showLabel").checked ? $("area").value.trim() : "");
 
     $("preview").disabled = true; $("record").disabled = true;
@@ -1488,7 +2003,9 @@
     try{ end = frameArea(W, H); }catch(e){ end = null; }
     if(!end){ restore(); setStatus("Couldn't frame the area.","err"); $("preview").disabled=false; $("record").disabled=false; return; }
 
-    var o = { W:W, H:H, fps:fps, durS:durS, startZoom:startZoom, endZoom:end.zoom, center:end.center, tilt:tilt, name:name };
+    var o = { W:W, H:H, fps:fps, durS:durS, startZoom:startZoom,
+              endZoom:endZoomForTilt(end.zoom, tiltDeg), center:end.center,
+              tiltDeg:tiltDeg, rotDeg:rotDeg, name:name };
     try{
       if(window.VideoEncoder && window.Mp4Muxer){ await encodeWebCodecs(o); }
       else { await encodeMediaRecorder(o); }
@@ -1505,7 +2022,11 @@
 
   /* ---------- boot ---------- */
   loadSettings(); syncSeg(); syncFpsSeg(); syncLabel(); syncCustomStyle(); syncSrc();
-  renderPresets(); refreshClientList();
+  syncStyleReadouts(); syncLogoUI(); syncFloatOverlay();
+  $("tiltVal").textContent = parseFloat($("tilt").value) ? $("tilt").value+"°" : "off";
+  $("rotVal").textContent = $("rot").value+"°";
+  $("vidDurVal").textContent = $("vidDur").value+" s";
+  renderPresets(); refreshClientList(); syncTags();
   if(srcMode === "states") ensureStates().catch(function(){});
   if($("token").value.trim().indexOf("pk.")===0){ initMap(); }
 })();
