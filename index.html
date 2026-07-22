@@ -176,6 +176,21 @@
   }
   .secbody{padding:2px 0 16px}
 
+  /* usage meter */
+  .usage{margin-top:13px;font-family:var(--mono);font-size:10.5px;color:var(--ink-dim)}
+  .usage-main{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .usage-x{background:none;border:0;color:var(--ink-faint);cursor:pointer;font-size:13px;padding:0;line-height:1}
+  .usage-x:hover{color:var(--ink)}
+  .usage.over #usageGeo{color:var(--red)}
+  .usage-bar{height:4px;background:var(--line);border-radius:4px;margin-top:7px;overflow:hidden}
+  .usage-fill{height:100%;width:0;background:#5fd08a;border-radius:4px;transition:width .3s}
+  .usage.warn .usage-fill{background:var(--accent)}
+  .usage.over .usage-fill{background:var(--red)}
+  .usage-detail{margin-top:9px;line-height:1.7;color:var(--ink-faint)}
+  .usage-detail b{color:var(--ink-dim);font-weight:500}
+  .usage-detail .rst{color:var(--ink-faint);text-decoration:underline;cursor:pointer}
+  .usage-detail .rst:hover{color:var(--red)}
+
   /* marker list rows */
   .mrow{display:flex;align-items:center;gap:7px;margin-bottom:7px}
   .mrow .mstyle{
@@ -325,6 +340,14 @@
     <button class="btn btn-primary" id="draw">Draw area</button>
     <button class="btn btn-ghost" id="download" disabled>Download PNG</button>
     <div class="status" id="status"></div>
+    <div class="usage" id="usage">
+      <div class="usage-main">
+        <span id="usageGeo">Geocoding: 0 / 100k this month</span>
+        <button class="usage-x" id="usageToggle" title="Details">&#9432;</button>
+      </div>
+      <div class="usage-bar"><div class="usage-fill" id="usageFill"></div></div>
+      <div class="usage-detail" id="usageDetail" style="display:none"></div>
+    </div>
   </div>
 </aside>
 
@@ -730,6 +753,55 @@
   "use strict";
   var $ = function(id){ return document.getElementById(id); };
 
+  /* ================= Mapbox usage tracking =================
+     Two cost centres matter here:
+       • Geocoding — $0.75 / 1000 above 100k/mo. THE expensive one, and the one
+         we were burning: every "Draw area" re-geocoded every zip. Now cached.
+       • Tiles / map loads — cheaper, higher free tier, shown for awareness.
+     We store per-day COUNTS (never coordinates) so a month-to-date total and a
+     projected overage cost can be shown. */
+  var USAGE_KEY = "sa_usage_v1";
+  var GEO_FREE = 100000, GEO_RATE = 0.75/1000;   // temporary geocoding
+  var usage = { day:"", today:{geocode:0,tiles:0,style:0,other:0}, month:{} };
+  function todayKey(){ return new Date().toISOString().slice(0,10); }
+  function monthKey(){ return new Date().toISOString().slice(0,7); }
+  function loadUsage(){
+    try{ usage = JSON.parse(localStorage.getItem(USAGE_KEY)) || usage; }catch(e){}
+    if(!usage.month) usage.month = {};
+    if(!usage.today) usage.today = {geocode:0,tiles:0,style:0,other:0};
+    if(usage.day !== todayKey()){ usage.day = todayKey(); usage.today = {geocode:0,tiles:0,style:0,other:0}; }
+  }
+  function saveUsage(){ try{ localStorage.setItem(USAGE_KEY, JSON.stringify(usage)); }catch(e){} }
+  function bump(kind, n){
+    n = n || 1;
+    if(usage.day !== todayKey()){ usage.day = todayKey(); usage.today = {geocode:0,tiles:0,style:0,other:0}; }
+    usage.today[kind] = (usage.today[kind]||0) + n;
+    var mk = monthKey();
+    usage.month[mk] = usage.month[mk] || {geocode:0,tiles:0,style:0,other:0};
+    usage.month[mk][kind] = (usage.month[mk][kind]||0) + n;
+    saveUsage();
+    if(pendingDeltas[kind] != null){ pendingDeltas[kind] += n; scheduleFlush(); }
+    if(usageRender) usageRender();
+  }
+  function scheduleFlush(){
+    if(flushTimer || !flushUsage) return;
+    flushTimer = setTimeout(function(){ flushTimer = null; flushUsage(false); }, 8000);
+  }
+  var flushUsage = null;   // assigned once the sync helpers are defined
+  function monthTotals(){ return usage.month[monthKey()] || {geocode:0,tiles:0,style:0,other:0}; }
+  var usageRender = null;
+
+  // Shared per-token roll-up (aggregates every device/teammate on this token).
+  // Deltas accumulate here and get flushed to /api/usage; the raw token never
+  // leaves the browser — only a hash of it keys the server-side counts.
+  var serverHash = "", serverMonth = null, flushTimer = null;
+  var pendingDeltas = {geocode:0,tiles:0,style:0,other:0};
+
+  /* In-memory geocode cache — only for THIS session, so redraws of the same
+     zips cost nothing. Kept in memory (not localStorage) since Mapbox's
+     temporary-geocoding terms don't permit persisting coordinates. */
+  var geoCache = {};   // "zip"/"place" -> [lng,lat]
+
   /* ---------- persistence (local only) ---------- */
   var STORE = "sa_mapper_v1";
   function saveSettings(){
@@ -892,6 +964,18 @@
   var map = null, lastArea = null, lastPoints = null;
   var fillOpacity = 0.14, activePreset = "", glowAmt = 0, activeMarkerPreset = "";
   var srcMode = "zips", pendingStates = [], statesGeo = null;
+  var reuseArea = null, reuseParts = [], reuseSig = "", reuseLabel = "";
+  // Fingerprint of everything that defines the built shape — inputs AND the
+  // shape controls. If it matches a saved client's, we reuse that client's
+  // stored shape instead of re-geocoding; change padding/smooth/etc and the
+  // fingerprint differs, so it rebuilds (coords still served free from cache).
+  function areaSignature(){
+    var base;
+    if(srcMode === "states") base = "s:" + (statesGeo ? selectedStates() : pendingStates).slice().sort().join(",");
+    else if(srcMode === "radius") base = "r:" + $("radius").value + "|" + $("centers").value.trim().toLowerCase();
+    else base = "z:" + parseZips($("zips").value).slice().sort().join(",");
+    return base + "#" + [$("pad").value, $("tight").value, $("smooth").checked, hullType, $("island").value].join("|");
+  }
   var editing = false, editRings = null, baseArea = null, dragging = null;
   var editMode = "move", islandPct = 0;
   var logoDataUrl = "", logoImg = null, logoAspect = 1;
@@ -946,7 +1030,19 @@
       zoom:3.4,
       preserveDrawingBuffer:true,   // required for PNG export
       antialias:true,               // smooth outline/road edges (no shimmer on zoom)
-      attributionControl:true
+      attributionControl:true,
+      // Keep far more tiles in memory so panning back, re-previewing and
+      // re-exporting the same area doesn't re-request tiles Mapbox already sent.
+      maxTileCacheSize: 3000,
+      refreshExpiredTiles: false,   // don't re-fetch tiles just because they expired
+      // transformRequest fires for EVERY resource the map loads — the exact
+      // hook to count real Mapbox usage by category.
+      transformRequest: function(url, resourceType){
+        if(resourceType === "Tile") bump("tiles");
+        else if(resourceType === "Style") bump("style");
+        else if(resourceType !== "Image") bump("other");
+        return { url:url };
+      }
     });
     map.on("style.load", function(){ applyLook(); if(lastArea){ renderLayers(); } });
     wireEdit();
@@ -971,6 +1067,7 @@
       .catch(function(){ return null; });
   }
   function geocodeOne(zip, token){
+    bump("geocode");
     return fetch("https://api.mapbox.com/search/geocode/v6/forward?q="+zip+"&country=us&types=postcode&limit=1&access_token="+encodeURIComponent(token))
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(d){ var f = d && d.features && d.features[0]; return (f&&f.geometry) ? f.geometry.coordinates : null; })
@@ -992,26 +1089,36 @@
     return Promise.all(pool);
   }
   function geocodeAll(zips, token, onProg){
-    var coords = {}, failed = [], CHUNK = 1000;
-    var chunks = [];
-    for(var i=0;i<zips.length;i+=CHUNK) chunks.push(zips.slice(i,i+CHUNK));
-    var done = 0;
+    var coords = {}, failed = [], done = 0, total = zips.length;
+    // Serve everything we already geocoded this session for free…
+    var need = [];
+    zips.forEach(function(z){
+      if(geoCache[z]){ coords[z] = geoCache[z]; done++; onProg(done); }
+      else need.push(z);
+    });
+    if(!need.length) return Promise.resolve({ coords:coords, failed:failed, billed:0 });
+
+    var CHUNK = 1000, chunks = [], billed = need.length;
+    for(var i=0;i<need.length;i+=CHUNK) chunks.push(need.slice(i,i+CHUNK));
     return chunks.reduce(function(p, chunk){
       return p.then(function(){
         return geocodeChunkBatch(chunk, token).then(function(batch){
           if(batch){
+            bump("geocode", chunk.length);   // batch bills one geocode per item
             chunk.forEach(function(z, idx){
               var fc = batch[idx], f = fc && fc.features && fc.features[0];
-              if(f && f.geometry) coords[z]=f.geometry.coordinates; else failed.push(z);
+              if(f && f.geometry){ coords[z]=f.geometry.coordinates; geoCache[z]=coords[z]; }
+              else failed.push(z);
               done++; onProg(done);
             });
           } else {
-            // batch unsupported/blocked for this token -> per-zip
-            return geocodeSequential(chunk, token, coords, failed, function(){ done++; onProg(done); });
+            // batch blocked -> per-zip (geocodeOne bumps + caches individually)
+            return geocodeSequential(chunk, token, coords, failed, function(){ done++; onProg(done); })
+              .then(function(){ chunk.forEach(function(z){ if(coords[z]) geoCache[z]=coords[z]; }); });
           }
         });
       });
-    }, Promise.resolve()).then(function(){ return { coords:coords, failed:failed }; });
+    }, Promise.resolve()).then(function(){ return { coords:coords, failed:failed, billed:billed }; });
   }
 
   /* ---------- build the coverage polygon ---------- */
@@ -2224,7 +2331,10 @@
       markerRadius:$("markerRadius").value, markerTrack:$("markerTrack").value,
       markerBold:$("markerBold").checked, markerUpper:$("markerUpper").checked,
       markerPreset:activeMarkerPreset, strokeAnim:$("strokeAnim").checked,
-      strokeStart:$("strokeStart").value, strokeSpan:$("strokeSpan").value
+      strokeStart:$("strokeStart").value, strokeSpan:$("strokeSpan").value,
+      // the built shape rides along so reloading + exporting costs no geocoding
+      savedArea: lastArea, savedParts: areaParts, sig: areaSignature(),
+      savedLabel: ($("badge").textContent || "")
     };
     var btn = $("clientSave"); btn.disabled = true;
     setStatus("Saving “"+name+"”…");
@@ -2309,12 +2419,121 @@
     syncSrc(); syncStyleReadouts();
     if(srcMode==="states") ensureStates().catch(function(){});
     activePreset = c.preset || ""; renderPresets(); syncLabel(); saveSettings();
-    if(map && c.style && c.style !== ($("style").value)){ /* style set above */ }
+
+    // Stash the saved shape so a redraw reuses it instead of re-geocoding.
+    reuseArea = c.savedArea || null;
+    reuseParts = c.savedParts || [];
+    reuseSig = c.sig || "";
+    reuseLabel = c.savedLabel || "";
+    if(reuseArea && $("token").value.trim().indexOf("pk.")===0){
+      // render it right now — instant, and zero geocoding
+      if(initMap()){
+        var res = { area:reuseArea, points:turf.featureCollection([]), parts:reuseParts,
+                    label: reuseLabel || "saved area" };
+        if(map.isStyleLoaded()) finishBuild(res); else map.once("idle", function(){ finishBuild(res); });
+        setStatus("Loaded “"+name+"” — saved shape, no geocoding used.","ok");
+        return;
+      }
+    }
     setStatus("Loaded “"+name+"”. Hit Draw area to map it.","ok");
   });
 
   /* ---------- status ---------- */
   function setStatus(msg, cls){ var s=$("status"); s.textContent=msg||""; s.className="status"+(cls?" "+cls:""); }
+
+  /* ---------- usage meter render ---------- */
+  function fmt(n){
+    if(n >= 1000) return (n/1000).toFixed(n>=10000?0:1) + "k";
+    return String(n);
+  }
+  // Shown number = the shared per-token total (server) when we have it, plus any
+  // deltas not yet flushed, so it stays live. Falls back to this browser's local
+  // tally when the token is unknown or the backend is unreachable.
+  function displayedTotals(){
+    if(serverMonth){
+      return { geocode:(serverMonth.geocode||0)+pendingDeltas.geocode,
+               tiles:(serverMonth.tiles||0)+pendingDeltas.tiles,
+               style:(serverMonth.style||0)+pendingDeltas.style,
+               other:(serverMonth.other||0)+pendingDeltas.other, shared:true };
+    }
+    var m = monthTotals();
+    return { geocode:m.geocode||0, tiles:m.tiles||0, style:m.style||0, other:m.other||0, shared:false };
+  }
+  usageRender = function(){
+    var t = displayedTotals(), geo = t.geocode;
+    var pct = Math.min(100, geo/GEO_FREE*100);
+    var over = Math.max(0, geo - GEO_FREE);
+    var el = $("usage"); if(!el) return;
+    $("usageGeo").textContent = "Geocoding: " + fmt(geo) + " / 100k this month";
+    $("usageFill").style.width = pct + "%";
+    el.classList.toggle("warn", pct >= 75 && over === 0);
+    el.classList.toggle("over", over > 0);
+    $("usageDetail").innerHTML =
+      "<b>This month · " + (t.shared ? "all devices on this token" : "this browser") + "</b><br>" +
+      "&nbsp;Geocoding &nbsp;" + fmt(geo) + (over ? " &nbsp;→ +$" + (over*GEO_RATE).toFixed(2) + " overage" : " &nbsp;(free)") + "<br>" +
+      "&nbsp;Map tiles &nbsp;" + fmt(t.tiles) + "<br>" +
+      "&nbsp;Style/other &nbsp;" + fmt(t.style+t.other) + "<br>" +
+      "<b>Today · this browser</b> &nbsp;" + fmt(usage.today.geocode||0) + " geocodes · " + fmt(usage.today.tiles||0) + " tiles<br>" +
+      (t.shared ? "" : '<span style="color:var(--ink-faint)">enter your token to see the shared total</span><br>') +
+      '<span class="rst" id="usageReset">reset this browser’s local tally</span>';
+    var rb = $("usageReset");
+    if(rb) rb.addEventListener("click", function(){
+      usage = { day:todayKey(), today:{geocode:0,tiles:0,style:0,other:0}, month:{} };
+      saveUsage(); usageRender();
+    });
+  };
+  $("usageToggle").addEventListener("click", function(){
+    var d = $("usageDetail");
+    d.style.display = d.style.display === "none" ? "" : "none";
+  });
+
+  /* ---------- shared per-token usage sync ---------- */
+  function computeTokenHash(tok){
+    if(!tok || !window.crypto || !crypto.subtle) return Promise.resolve("");
+    try{
+      return crypto.subtle.digest("SHA-256", new TextEncoder().encode(tok)).then(function(buf){
+        return Array.from(new Uint8Array(buf)).slice(0,12)
+          .map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");   // 24 hex chars
+      }).catch(function(){ return ""; });
+    }catch(e){ return Promise.resolve(""); }
+  }
+  function fetchServerUsage(){
+    if(!serverHash) return Promise.resolve();
+    return fetch("/api/usage?h="+serverHash+"&m="+monthKey())
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){ if(d && d.totals){ serverMonth = d.totals; usageRender(); } })
+      .catch(function(){});
+  }
+  flushUsage = function(useBeacon){
+    if(!serverHash) return;
+    var snap = { geocode:pendingDeltas.geocode, tiles:pendingDeltas.tiles, style:pendingDeltas.style, other:pendingDeltas.other };
+    if(snap.geocode+snap.tiles+snap.style+snap.other === 0) return;
+    var payload = { h:serverHash, m:monthKey(), inc:snap };
+    pendingDeltas = {geocode:0,tiles:0,style:0,other:0};   // optimistic
+    if(useBeacon && navigator.sendBeacon){
+      try{ navigator.sendBeacon("/api/usage", new Blob([JSON.stringify(payload)],{type:"application/json"})); return; }catch(e){}
+    }
+    fetch("/api/usage", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) })
+      .then(function(r){ if(!r.ok) throw 0; return fetchServerUsage(); })
+      .catch(function(){   // failed — put the deltas back so the next flush retries
+        pendingDeltas.geocode+=snap.geocode; pendingDeltas.tiles+=snap.tiles;
+        pendingDeltas.style+=snap.style; pendingDeltas.other+=snap.other;
+      });
+  };
+  function setUsageToken(tok){
+    computeTokenHash((tok||"").trim()).then(function(h){
+      if(h === serverHash) return;
+      serverHash = h; serverMonth = null;
+      if(h) fetchServerUsage(); else usageRender();
+    });
+  }
+  var _tokTimer = null;
+  $("token").addEventListener("input", function(){
+    clearTimeout(_tokTimer);
+    _tokTimer = setTimeout(function(){ setUsageToken($("token").value); }, 600);
+  });
+  document.addEventListener("visibilitychange", function(){ if(document.hidden) flushUsage(true); });
+  window.addEventListener("pagehide", function(){ flushUsage(true); });
 
   /* ---------- theme + right-panel drawer ---------- */
   var THEME_KEY = "sa_theme";
@@ -2424,9 +2643,12 @@
 
   /* ---------- radius: centers + miles ---------- */
   function geocodePlace(q, token){
+    var key = "@" + q.toLowerCase();
+    if(geoCache[key]) return Promise.resolve(geoCache[key]);
+    bump("geocode");
     return fetch("https://api.mapbox.com/search/geocode/v6/forward?q="+encodeURIComponent(q)+"&country=us&limit=1&access_token="+encodeURIComponent(token))
       .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(d){ var f = d && d.features && d.features[0]; return (f && f.geometry) ? f.geometry.coordinates : null; })
+      .then(function(d){ var f = d && d.features && d.features[0]; var c = (f && f.geometry) ? f.geometry.coordinates : null; if(c) geoCache[key]=c; return c; })
       .catch(function(){ return null; });
   }
   function buildRadiusArea(token){
@@ -2776,6 +2998,17 @@
     var btn = $("draw");
     var job;
 
+    // Reuse a saved client's shape if the inputs are unchanged — the shape only
+    // needs re-geocoding when the zips/states/centres actually change. (Shape
+    // tweaks like padding still rebuild, but those are served from geoCache free.)
+    if(reuseArea && reuseSig && areaSignature() === reuseSig && !editRings){
+      if(!initMap()) return;
+      var res = { area:reuseArea, points:turf.featureCollection([]), parts:reuseParts, label: reuseLabel || "saved area" };
+      if(map.isStyleLoaded()) finishBuild(res); else map.once("idle", function(){ finishBuild(res); });
+      setStatus("Drawn from saved shape — no geocoding used.","ok");
+      return;
+    }
+
     if(srcMode === "zips"){
       var zips = parseZips($("zips").value);
       if(!zips.length){ setStatus("No 5-digit zip codes found in the box.","err"); return; }
@@ -2787,9 +3020,11 @@
           var n = Object.keys(r.coords).length;
           if(n < 1) throw new Error("None of the zips could be located. Check the token has geocoding access.");
           var b = buildArea(r.coords);
+          var cached = zips.length - r.billed;
           return { area:b.area, points:b.points,
                    label: n+" zips" + (r.failed.length ? "  ·  "+r.failed.length+" not found" : ""),
-                   msg: "Mapped "+n+" zips." + (r.failed.length ? " Skipped "+r.failed.length+" (e.g. "+r.failed.slice(0,3).join(", ")+")." : "") };
+                   msg: "Mapped "+n+" zips." + (r.failed.length ? " Skipped "+r.failed.length+"." : "")
+                        + (cached>0 ? " ("+cached+" reused free, "+r.billed+" geocoded)" : "") };
         });
     } else if(srcMode === "states"){
       if(!initMap()) return;
@@ -3204,6 +3439,8 @@
   $("vidDurVal").textContent = $("vidDur").value+" s";
   renderPresets(); refreshClientList(); syncTags();
   try{ applyTheme(localStorage.getItem(THEME_KEY) || "dark"); }catch(e){ applyTheme("dark"); }
+  loadUsage(); usageRender();
+  setUsageToken($("token").value);
   // marker labels are baked to canvas, so wait for the webfont before first paint
   if(document.fonts && document.fonts.ready){
     document.fonts.ready.then(function(){ if(map && markers.length) renderMarkerLayers(); }).catch(function(){});
