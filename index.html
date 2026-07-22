@@ -780,10 +780,22 @@
     usage.month[mk] = usage.month[mk] || {geocode:0,tiles:0,style:0,other:0};
     usage.month[mk][kind] = (usage.month[mk][kind]||0) + n;
     saveUsage();
+    if(pendingDeltas[kind] != null){ pendingDeltas[kind] += n; scheduleFlush(); }
     if(usageRender) usageRender();
   }
+  function scheduleFlush(){
+    if(flushTimer || !flushUsage) return;
+    flushTimer = setTimeout(function(){ flushTimer = null; flushUsage(false); }, 8000);
+  }
+  var flushUsage = null;   // assigned once the sync helpers are defined
   function monthTotals(){ return usage.month[monthKey()] || {geocode:0,tiles:0,style:0,other:0}; }
   var usageRender = null;
+
+  // Shared per-token roll-up (aggregates every device/teammate on this token).
+  // Deltas accumulate here and get flushed to /api/usage; the raw token never
+  // leaves the browser — only a hash of it keys the server-side counts.
+  var serverHash = "", serverMonth = null, flushTimer = null;
+  var pendingDeltas = {geocode:0,tiles:0,style:0,other:0};
 
   /* In-memory geocode cache — only for THIS session, so redraws of the same
      zips cost nothing. Kept in memory (not localStorage) since Mapbox's
@@ -2434,8 +2446,21 @@
     if(n >= 1000) return (n/1000).toFixed(n>=10000?0:1) + "k";
     return String(n);
   }
+  // Shown number = the shared per-token total (server) when we have it, plus any
+  // deltas not yet flushed, so it stays live. Falls back to this browser's local
+  // tally when the token is unknown or the backend is unreachable.
+  function displayedTotals(){
+    if(serverMonth){
+      return { geocode:(serverMonth.geocode||0)+pendingDeltas.geocode,
+               tiles:(serverMonth.tiles||0)+pendingDeltas.tiles,
+               style:(serverMonth.style||0)+pendingDeltas.style,
+               other:(serverMonth.other||0)+pendingDeltas.other, shared:true };
+    }
+    var m = monthTotals();
+    return { geocode:m.geocode||0, tiles:m.tiles||0, style:m.style||0, other:m.other||0, shared:false };
+  }
   usageRender = function(){
-    var m = monthTotals(), geo = m.geocode||0;
+    var t = displayedTotals(), geo = t.geocode;
     var pct = Math.min(100, geo/GEO_FREE*100);
     var over = Math.max(0, geo - GEO_FREE);
     var el = $("usage"); if(!el) return;
@@ -2444,12 +2469,13 @@
     el.classList.toggle("warn", pct >= 75 && over === 0);
     el.classList.toggle("over", over > 0);
     $("usageDetail").innerHTML =
-      "<b>This month</b><br>" +
+      "<b>This month · " + (t.shared ? "all devices on this token" : "this browser") + "</b><br>" +
       "&nbsp;Geocoding &nbsp;" + fmt(geo) + (over ? " &nbsp;→ +$" + (over*GEO_RATE).toFixed(2) + " overage" : " &nbsp;(free)") + "<br>" +
-      "&nbsp;Map tiles &nbsp;" + fmt(m.tiles||0) + "<br>" +
-      "&nbsp;Style/other &nbsp;" + fmt((m.style||0)+(m.other||0)) + "<br>" +
-      "<b>Today</b> &nbsp;" + fmt(usage.today.geocode||0) + " geocodes · " + fmt(usage.today.tiles||0) + " tiles<br>" +
-      '<span class="rst" id="usageReset">reset counters</span>';
+      "&nbsp;Map tiles &nbsp;" + fmt(t.tiles) + "<br>" +
+      "&nbsp;Style/other &nbsp;" + fmt(t.style+t.other) + "<br>" +
+      "<b>Today · this browser</b> &nbsp;" + fmt(usage.today.geocode||0) + " geocodes · " + fmt(usage.today.tiles||0) + " tiles<br>" +
+      (t.shared ? "" : '<span style="color:var(--ink-faint)">enter your token to see the shared total</span><br>') +
+      '<span class="rst" id="usageReset">reset this browser’s local tally</span>';
     var rb = $("usageReset");
     if(rb) rb.addEventListener("click", function(){
       usage = { day:todayKey(), today:{geocode:0,tiles:0,style:0,other:0}, month:{} };
@@ -2460,6 +2486,54 @@
     var d = $("usageDetail");
     d.style.display = d.style.display === "none" ? "" : "none";
   });
+
+  /* ---------- shared per-token usage sync ---------- */
+  function computeTokenHash(tok){
+    if(!tok || !window.crypto || !crypto.subtle) return Promise.resolve("");
+    try{
+      return crypto.subtle.digest("SHA-256", new TextEncoder().encode(tok)).then(function(buf){
+        return Array.from(new Uint8Array(buf)).slice(0,12)
+          .map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");   // 24 hex chars
+      }).catch(function(){ return ""; });
+    }catch(e){ return Promise.resolve(""); }
+  }
+  function fetchServerUsage(){
+    if(!serverHash) return Promise.resolve();
+    return fetch("/api/usage?h="+serverHash+"&m="+monthKey())
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){ if(d && d.totals){ serverMonth = d.totals; usageRender(); } })
+      .catch(function(){});
+  }
+  flushUsage = function(useBeacon){
+    if(!serverHash) return;
+    var snap = { geocode:pendingDeltas.geocode, tiles:pendingDeltas.tiles, style:pendingDeltas.style, other:pendingDeltas.other };
+    if(snap.geocode+snap.tiles+snap.style+snap.other === 0) return;
+    var payload = { h:serverHash, m:monthKey(), inc:snap };
+    pendingDeltas = {geocode:0,tiles:0,style:0,other:0};   // optimistic
+    if(useBeacon && navigator.sendBeacon){
+      try{ navigator.sendBeacon("/api/usage", new Blob([JSON.stringify(payload)],{type:"application/json"})); return; }catch(e){}
+    }
+    fetch("/api/usage", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) })
+      .then(function(r){ if(!r.ok) throw 0; return fetchServerUsage(); })
+      .catch(function(){   // failed — put the deltas back so the next flush retries
+        pendingDeltas.geocode+=snap.geocode; pendingDeltas.tiles+=snap.tiles;
+        pendingDeltas.style+=snap.style; pendingDeltas.other+=snap.other;
+      });
+  };
+  function setUsageToken(tok){
+    computeTokenHash((tok||"").trim()).then(function(h){
+      if(h === serverHash) return;
+      serverHash = h; serverMonth = null;
+      if(h) fetchServerUsage(); else usageRender();
+    });
+  }
+  var _tokTimer = null;
+  $("token").addEventListener("input", function(){
+    clearTimeout(_tokTimer);
+    _tokTimer = setTimeout(function(){ setUsageToken($("token").value); }, 600);
+  });
+  document.addEventListener("visibilitychange", function(){ if(document.hidden) flushUsage(true); });
+  window.addEventListener("pagehide", function(){ flushUsage(true); });
 
   /* ---------- theme + right-panel drawer ---------- */
   var THEME_KEY = "sa_theme";
@@ -3366,6 +3440,7 @@
   renderPresets(); refreshClientList(); syncTags();
   try{ applyTheme(localStorage.getItem(THEME_KEY) || "dark"); }catch(e){ applyTheme("dark"); }
   loadUsage(); usageRender();
+  setUsageToken($("token").value);
   // marker labels are baked to canvas, so wait for the webfont before first paint
   if(document.fonts && document.fonts.ready){
     document.fonts.ready.then(function(){ if(map && markers.length) renderMarkerLayers(); }).catch(function(){});

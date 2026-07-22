@@ -6,8 +6,10 @@ Zip / state / radius service-area map generator — 4K PNG + MP4 ad exports, edi
 
 - `index.html` — the whole app (static, no build step).
 - `api/clients.js` — Vercel serverless function backing the "Saved clients" list (GET/POST/DELETE), storing each client as one field in a Redis hash.
-- No login. The client list is shared by anyone with the deployed URL — keep the URL unlisted if that matters to you.
+- `api/usage.js` — usage roll-up (GET/POST). The browser reports the Mapbox requests it makes (geocoding + tiles), keyed by a **hash** of the token, so the counter aggregates across every device/teammate on the same token. The raw token never reaches the server. This reflects usage the tool generates — the authoritative bill is still your Mapbox dashboard.
+- No login. Both the client list and usage totals are shared by anyone with the deployed URL — keep the URL unlisted if that matters to you.
 - The Mapbox token is entered in the browser and stored per-browser (`localStorage`), not on the server.
+- Both functions use the same Upstash Redis integration (the `KV_REST_API_*` env vars) — no extra setup beyond the one storage step below.
 
 ## Deploy (GitHub → Vercel, one-time setup)
 
