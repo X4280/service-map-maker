@@ -1190,6 +1190,29 @@
     return turf.featureCollection(feats);
   }
 
+  // Run cb once the style is actually ready to take addSource/addLayer calls.
+  // The old "isStyleLoaded() ? now : once('idle')" broke on the Standard style:
+  // isStyleLoaded() can read false after the map has ALREADY gone idle, so the
+  // once('idle') listener never fired again and the shape never drew. We poll
+  // (nudging the render loop) so it fires the moment the style settles, with a
+  // cap so it never hangs.
+  function whenStyleReady(cb){
+    if(!map){ return; }
+    var done = false;
+    function run(){ if(done) return; done = true; try{ cb(); }catch(e){} }
+    if(map.isStyleLoaded()){ run(); return; }
+    map.once("idle", run);
+    map.once("style.load", function(){ if(map.isStyleLoaded()) run(); });
+    var tries = 0;
+    (function poll(){
+      if(done) return;
+      if(map.isStyleLoaded() || map.loaded()){ run(); return; }
+      if(tries++ > 50){ run(); return; }   // ~7.5s hard cap
+      try{ map.triggerRepaint(); }catch(e){}
+      setTimeout(poll, 150);
+    })();
+  }
+
   function renderLayers(){
     AREA_LAYERS.forEach(function(l){ if(map.getLayer(l)) map.removeLayer(l); });
     AREA_SOURCES.forEach(function(s){ if(map.getSource(s)) map.removeSource(s); });
@@ -2430,7 +2453,7 @@
       if(initMap()){
         var res = { area:reuseArea, points:turf.featureCollection([]), parts:reuseParts,
                     label: reuseLabel || "saved area" };
-        if(map.isStyleLoaded()) finishBuild(res); else map.once("idle", function(){ finishBuild(res); });
+        finishBuild(res);
         setStatus("Loaded “"+name+"” — saved shape, no geocoding used.","ok");
         return;
       }
@@ -2980,13 +3003,12 @@
     lastPoints = res.points;
     areaParts = Array.isArray(res.parts) ? res.parts : [];
     updateIslandUI();
-    function paint(){
-      renderLayers(); syncLabel();
-      $("empty").style.display = "none";
-      $("badge").style.display = "block";
-      $("badge").textContent = res.label;
-    }
-    if(map.isStyleLoaded()) paint(); else map.once("idle", paint);
+    // Hide the overlay + set the badge immediately — these are pure DOM and must
+    // not wait on the map style (that wait is what left the map blank).
+    $("empty").style.display = "none";
+    $("badge").style.display = "block";
+    $("badge").textContent = res.label;
+    whenStyleReady(function(){ renderLayers(); syncLabel(); });
     ["download","preview","record","editToggle","resetShape"].forEach(function(id){ $(id).disabled = false; });
   }
 
@@ -3004,7 +3026,7 @@
     if(reuseArea && reuseSig && areaSignature() === reuseSig && !editRings){
       if(!initMap()) return;
       var res = { area:reuseArea, points:turf.featureCollection([]), parts:reuseParts, label: reuseLabel || "saved area" };
-      if(map.isStyleLoaded()) finishBuild(res); else map.once("idle", function(){ finishBuild(res); });
+      finishBuild(res);
       setStatus("Drawn from saved shape — no geocoding used.","ok");
       return;
     }
