@@ -203,6 +203,9 @@
 
   /* logo overlay preview on the map */
   #logoOverlay{position:absolute;z-index:6;pointer-events:none;display:none;max-width:none}
+  /* cinematic vignette (darkened edges) */
+  #vignetteOverlay{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:0;
+    background:radial-gradient(ellipse 72% 72% at 50% 50%, rgba(0,0,0,0) 45%, rgba(0,0,0,1) 100%);}
 
   /* multi-select (states) */
   select.multi{height:168px;padding:5px;background-image:none;appearance:none;cursor:default}
@@ -354,6 +357,7 @@
 
 <main class="stage">
   <div id="map"></div>
+  <div id="vignetteOverlay"></div>
   <img class="arealabel" id="mapLabel" alt="" />
   <img id="logoOverlay" alt="" />
   <div class="badge" id="badge"></div>
@@ -467,9 +471,25 @@
           <span>Fill area</span>
           <label class="switch"><input type="checkbox" id="fill"><span class="track"></span></label>
         </div>
-        <div class="field" id="fillOpWrap" style="display:none;margin-top:13px">
-          <div class="slabel"><label class="lab" style="margin:0">Fill opacity</label><span class="val" id="fillOpVal">14%</span></div>
-          <input type="range" id="fillOp" min="0" max="100" step="1" value="14" />
+        <div id="fillOpts" style="display:none">
+          <div class="field" id="fillStyleWrap" style="margin-top:13px">
+            <label class="lab" for="fillStyle">Fill style</label>
+            <select id="fillStyle">
+              <option value="solid">Solid tint</option>
+              <option value="gradient">Gradient fade</option>
+              <option value="spotlight">Spotlight beam</option>
+            </select>
+          </div>
+          <div class="field" id="fillOpWrap" style="margin-top:13px">
+            <div class="slabel"><label class="lab" style="margin:0">Fill opacity</label><span class="val" id="fillOpVal">14%</span></div>
+            <input type="range" id="fillOp" min="0" max="100" step="1" value="14" />
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:15px">
+          <div class="slabel"><label class="lab" style="margin:0">Vignette</label><span class="val" id="vignetteVal">off</span></div>
+          <input type="range" id="vignette" min="0" max="100" step="1" value="0" />
+          <div class="hint">Darkens the frame edges — cinematic focus on the area. Burned into stills &amp; video.</div>
         </div>
 
         <div class="divider" style="margin:17px 0"></div>
@@ -960,6 +980,8 @@
       strokeSpan: $("strokeSpan").value,
       lineDash: $("lineDash").value,
       lineCasing: $("lineCasing").checked,
+      fillStyle: $("fillStyle").value,
+      vignette: $("vignette").value,
       titlePos: $("titlePos").value, titleFont: $("titleFont").value, titleColor: $("titleColor").value,
       titleBg: $("titleBg").value, titleBgColor: $("titleBgColor").value, titleBold: $("titleBold").checked,
       titleUpper: $("titleUpper").checked, titleTrack: $("titleTrack").value, titleSize: $("titleSize").value,
@@ -1030,6 +1052,8 @@
     if(s.strokeSpan!=null) $("strokeSpan").value = s.strokeSpan;
     if(s.lineDash) $("lineDash").value = s.lineDash;
     if(typeof s.lineCasing==="boolean") $("lineCasing").checked = s.lineCasing;
+    if(s.fillStyle) $("fillStyle").value = s.fillStyle;
+    if(s.vignette!=null) $("vignette").value = s.vignette;
     if(s.titlePos) $("titlePos").value = s.titlePos;
     if(s.titleFont) $("titleFont").value = s.titleFont;
     if(s.titleColor) $("titleColor").value = s.titleColor;
@@ -1053,6 +1077,7 @@
   $("hullSeg").addEventListener("click", function(e){
     var b = e.target.closest("button"); if(!b) return;
     hullType = b.dataset.v; syncSeg(); saveSettings();
+    liveRebuild();   // switch convex/concave instantly, no redraw, no geocoding
   });
 
   /* ---------- frame-rate segmented control ---------- */
@@ -1067,9 +1092,11 @@
   });
   ["vidRes","vidFormat"].forEach(function(id){ $(id).addEventListener("change", saveSettings); });
 
-  /* ---------- slider readouts ---------- */
-  $("tight").addEventListener("input", function(){ $("tightVal").textContent = this.value+" mi"; });
-  $("pad").addEventListener("input", function(){ $("padVal").textContent = this.value+" mi"; });
+  /* ---------- slider readouts (shape sliders rebuild live, no redraw) ---------- */
+  $("tight").addEventListener("input", function(){ $("tightVal").textContent = this.value+" mi"; if(srcMode==="zips") liveRebuildSoon(); });
+  $("pad").addEventListener("input", function(){ $("padVal").textContent = this.value+" mi"; liveRebuildSoon(); });
+  $("radius").addEventListener("input", function(){ if(srcMode==="radius") liveRebuildSoon(); });
+  $("smooth").addEventListener("change", function(){ liveRebuild(); });
   $("lineW").addEventListener("input", function(){ $("lineWVal").textContent = this.value; if(map&&map.getLayer("area-line")) map.setPaintProperty("area-line","line-width",parseFloat(this.value)); });
   ["token","area","style","tight","pad","smooth","fill","dots","showLabel","lineColor","lineW"].forEach(function(id){
     $(id).addEventListener("change", saveSettings);
@@ -1286,9 +1313,9 @@
   }
 
   /* ---------- render onto the map ---------- */
-  var AREA_LAYERS  = ["area-fill","logo-flat","area-glow2","area-glow1","area-casing","area-line","zip-dots",
+  var AREA_LAYERS  = ["area-fill","area-gradfill","logo-flat","area-glow2","area-glow1","area-casing","area-line","zip-dots",
                       "logo-pin","marker-dots","marker-labels"];
-  var AREA_SOURCES = ["area-src","outline-src","points-src","logo-flat-src","logo-pin-src","markers-src"];
+  var AREA_SOURCES = ["area-src","outline-src","points-src","logo-flat-src","logo-pin-src","markers-src","gradfill-src"];
 
   function relLuma(hex){
     var r = hexToRGB(hex);
@@ -1339,7 +1366,7 @@
     })();
   }
 
-  function renderLayers(){
+  function renderLayers(noFit){
     AREA_LAYERS.forEach(function(l){ if(map.getLayer(l)) map.removeLayer(l); });
     AREA_SOURCES.forEach(function(s){ if(map.getSource(s)) map.removeSource(s); });
 
@@ -1349,8 +1376,16 @@
     map.addSource("outline-src", { type:"geojson", data: strokeProgress >= 1 ? lastOutline : slicedOutline(strokeProgress) });
 
     if($("fill").checked){
-      map.addLayer({ id:"area-fill", type:"fill", source:"area-src",
-        paint:{ "fill-color":col, "fill-opacity":fillOpacity } });
+      var fst = $("fillStyle").value;
+      var gf = (fst !== "solid") ? buildGradientFill(fst) : null;
+      if(gf){
+        map.addSource("gradfill-src", { type:"image", url:gf.url, coordinates:gf.coords });
+        map.addLayer({ id:"area-gradfill", type:"raster", source:"gradfill-src",
+          paint:{ "raster-opacity":1, "raster-fade-duration":0, "raster-resampling":"linear" } });
+      } else {
+        map.addLayer({ id:"area-fill", type:"fill", source:"area-src",
+          paint:{ "fill-color":col, "fill-opacity":fillOpacity } });
+      }
     }
 
     // Glow = two widened, blurred copies of the outline stacked underneath it.
@@ -1392,9 +1427,12 @@
     renderLogoLayers();
 
     // keep edit handles above the freshly re-added area layers
-    if(editing && map.getLayer("edit-handles")){ try{ map.moveLayer("edit-handles"); }catch(e){} }
+    if(editing){
+      try{ if(map.getLayer("edit-hit")) map.moveLayer("edit-hit"); }catch(e){}
+      try{ if(map.getLayer("edit-handles")) map.moveLayer("edit-handles"); }catch(e){}
+    }
 
-    if(!editing){
+    if(!editing && !noFit){
       try{
         var bb = turf.bbox(lastArea);
         map.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]], { padding:80, duration:600 });
@@ -1551,24 +1589,35 @@
     $(id).addEventListener("change", function(){ clearPreset(); if(lastArea) renderLayers(); saveSettings(); });
   });
 
-  /* ---------- fill opacity + glow ---------- */
+  /* ---------- fill opacity + glow + vignette ---------- */
   function syncStyleReadouts(){
-    $("fillOpWrap").style.display = $("fill").checked ? "" : "none";
+    $("fillOpts").style.display = $("fill").checked ? "" : "none";
     $("fillOpVal").textContent = Math.round(fillOpacity*100) + "%";
     $("fillOp").value = Math.round(fillOpacity*100);
     $("glow").value = glowAmt;
     $("glowVal").textContent = glowAmt ? glowAmt + "%" : "off";
     $("lineWVal").textContent = $("lineW").value;
+    var vg = parseFloat($("vignette").value)||0;
+    $("vignetteVal").textContent = vg ? vg + "%" : "off";
+    syncVignette();
     syncTags();
   }
+  function syncVignette(){
+    var vg = (parseFloat($("vignette").value)||0)/100;
+    // preview opacity peaks at ~0.85 so it reads without going fully black
+    $("vignetteOverlay").style.opacity = (vg*0.85).toFixed(3);
+  }
+  var solidFill = ["solid"];   // styles that support the cheap opacity live-update
   $("fillOp").addEventListener("input", function(){
     fillOpacity = (parseFloat(this.value)||0)/100;
     $("fillOpVal").textContent = Math.round(fillOpacity*100) + "%";
     clearPreset();
-    // cheap live update — no need to rebuild every layer for an opacity nudge
-    if(map && map.getLayer("area-fill")) map.setPaintProperty("area-fill","fill-opacity",fillOpacity);
+    if($("fillStyle").value === "solid"){
+      if(map && map.getLayer("area-fill")) map.setPaintProperty("area-fill","fill-opacity",fillOpacity);
+    } else if(lastArea){ renderLayersSoon(); }   // gradient bakes opacity in → rebuild
   });
   $("fillOp").addEventListener("change", saveSettings);
+  $("fillStyle").addEventListener("change", function(){ clearPreset(); if(lastArea) renderLayers(); saveSettings(); });
   $("glow").addEventListener("input", function(){
     glowAmt = parseFloat(this.value)||0;
     $("glowVal").textContent = glowAmt ? glowAmt + "%" : "off";
@@ -1576,6 +1625,12 @@
     if(lastArea) renderLayers();   // glow adds/removes layers, so a rebuild is needed
   });
   $("glow").addEventListener("change", saveSettings);
+  $("vignette").addEventListener("input", function(){
+    $("vignetteVal").textContent = (parseFloat(this.value)||0) ? this.value+"%" : "off";
+    syncVignette(); clearPreset();
+  });
+  $("vignette").addEventListener("change", saveSettings);
+  var renderLayersSoon = debounce(function(){ if(lastArea) renderLayers(true); }, 120);
 
   /* ================= base-map resolution (incl. custom URLs) ================= */
   // The <select> holds preset style ids; picking "custom" defers to the pasted URL.
@@ -2420,6 +2475,53 @@
   // Bake a repeating logo grid into one canvas, clipped to the actual service-area
   // polygon. Baking it (rather than using fill-pattern) keeps the tiles locked to
   // the ground, so they don't slide around during the zoom-in.
+  // Bake a gradient/spotlight fill clipped to the polygon, as a ground-locked
+  // image (so it doesn't slide during the zoom). This is the Seattle-style look.
+  function buildGradientFill(mode){
+    if(!lastArea) return null;
+    try{
+      var bb = turf.bbox(lastArea);
+      var lonSpan = bb[2]-bb[0], latSpan = bb[3]-bb[1];
+      if(!(lonSpan>0) || !(latSpan>0)) return null;
+      var midLat = (bb[1]+bb[3])/2;
+      var aspect = (lonSpan*Math.cos(midLat*Math.PI/180)) / latSpan;
+      var W = 1600, H = Math.max(1, Math.round(W/aspect));
+      if(H > 3200){ H = 3200; W = Math.max(1, Math.round(H*aspect)); }
+      var cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+      var ctx = cv.getContext("2d");
+      var toPx = function(c){ return [ (c[0]-bb[0])/lonSpan*W, (bb[3]-c[1])/latSpan*H ]; };
+      ctx.save();
+      ctx.beginPath();
+      turf.flatten(lastArea).features.forEach(function(pf){
+        pf.geometry.coordinates.forEach(function(ring){
+          ring.forEach(function(c,i){ var p=toPx(c); i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]); });
+          ctx.closePath();
+        });
+      });
+      ctx.clip();
+      var rgb = hexToRGB($("lineColor").value).map(function(v){ return Math.round(v*255); });
+      var op = fillOpacity;
+      function rgba(a){ return "rgba("+rgb[0]+","+rgb[1]+","+rgb[2]+","+Math.max(0,Math.min(1,a)).toFixed(3)+")"; }
+      var g;
+      if(mode === "spotlight"){
+        g = ctx.createLinearGradient(0, H, W, 0);        // diagonal light beam
+        g.addColorStop(0.00, rgba(0));
+        g.addColorStop(0.40, rgba(op*0.30));
+        g.addColorStop(0.54, rgba(op*1.7));              // hotspot
+        g.addColorStop(0.68, rgba(op*0.30));
+        g.addColorStop(1.00, rgba(0));
+      } else {
+        g = ctx.createLinearGradient(0, H, 0, 0);        // fade from bottom up
+        g.addColorStop(0, rgba(op*1.15));
+        g.addColorStop(1, rgba(0));
+      }
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      return { url: cv.toDataURL("image/png"),
+               coords: [[bb[0],bb[3]],[bb[2],bb[3]],[bb[2],bb[1]],[bb[0],bb[1]]] };
+    }catch(e){ return null; }
+  }
+
   function buildTiledLogoURL(){
     if(!logoImg || !lastArea) return null;
     try{
@@ -2509,7 +2611,22 @@
     ctx.drawImage(logoImg, x, y, iw, ih);
     ctx.globalAlpha = prev;
   }
+  function drawVignetteOnCtx(ctx, W, H){
+    var vg = (parseFloat($("vignette").value)||0)/100;
+    if(vg <= 0) return;
+    var rx = W*0.72, ry = H*0.72;                 // match the DOM ellipse
+    ctx.save();
+    ctx.translate(W/2, H/2);
+    ctx.scale(rx/ry, 1);                          // circular gradient -> elliptical
+    var g = ctx.createRadialGradient(0,0, ry*0.45, 0,0, ry);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(1, "rgba(0,0,0,"+(vg*0.85).toFixed(3)+")");
+    ctx.fillStyle = g;
+    ctx.fillRect(-1e5, -1e5, 2e5, 2e5);
+    ctx.restore();
+  }
   function drawOverlays(ctx, W, H, name){
+    drawVignetteOnCtx(ctx, W, H);   // under the title/logo so those stay bright
     drawTitleOnCtx(ctx, W, H);   // title reads its own controls; `name` kept for callers
     drawLogoOnCtx(ctx, W, H);
   }
@@ -2614,6 +2731,7 @@
       area:name, zips:$("zips").value, style:$("style").value, customStyle:$("customStyle").value,
       lineColor:$("lineColor").value, lineW:$("lineW").value,
       lineDash:$("lineDash").value, lineCasing:$("lineCasing").checked,
+      fillStyle:$("fillStyle").value, vignette:$("vignette").value,
       fill:$("fill").checked, fillOp:fillOpacity, dots:$("dots").checked,
       smooth:$("smooth").checked, showLabel:$("showLabel").checked,
       declutter:$("declutter").checked, hull:hullType,
@@ -2744,6 +2862,8 @@
     if(c.strokeSpan!=null) $("strokeSpan").value = c.strokeSpan;
     if(c.lineDash) $("lineDash").value = c.lineDash;
     if(typeof c.lineCasing==="boolean") $("lineCasing").checked = c.lineCasing;
+    if(c.fillStyle) $("fillStyle").value = c.fillStyle;
+    if(c.vignette!=null) $("vignette").value = c.vignette;
     if(c.titlePos) $("titlePos").value = c.titlePos;
     if(c.titleFont) $("titleFont").value = c.titleFont;
     if(c.titleColor) $("titleColor").value = c.titleColor;
@@ -2993,23 +3113,69 @@
       .then(function(d){ var f = d && d.features && d.features[0]; var c = (f && f.geometry) ? f.geometry.coordinates : null; if(c) geoCache[key]=c; return c; })
       .catch(function(){ return null; });
   }
+  // build from already-geocoded center coords (no network) — used by both the
+  // async draw path and the live radius slider
+  function buildRadiusFromCoords(coords){
+    var miles = parseFloat($("radius").value);
+    var circles = coords.map(function(c){ return turf.circle(c, miles, { steps:128, units:"miles" }); });
+    var area = circles.length===1 ? circles[0] : turf.union(turf.featureCollection(circles));
+    var pts = coords.map(function(c){ return turf.point(c); });
+    return { area:area, points:turf.featureCollection(pts), parts:coords.slice(),
+             label: coords.length+" center"+(coords.length>1?"s":"")+"  ·  "+miles+" mi" };
+  }
   function buildRadiusArea(token){
     var lines = $("centers").value.split(/\n+/).map(function(s){ return s.trim(); }).filter(Boolean);
     if(!lines.length) return Promise.reject(new Error("Add at least one center location."));
-    var miles = parseFloat($("radius").value);
     setStatus("Locating "+lines.length+" center"+(lines.length>1?"s":"")+"…");
     return Promise.all(lines.map(function(q){ return geocodePlace(q, token); })).then(function(coords){
       var good = [], failed = [];
       coords.forEach(function(c,i){ if(c) good.push(c); else failed.push(lines[i]); });
       if(!good.length) throw new Error("Couldn't locate any of those places.");
-      var circles = good.map(function(c){ return turf.circle(c, miles, { steps:128, units:"miles" }); });
-      var area = circles.length===1 ? circles[0] : turf.union(turf.featureCollection(circles));
-      var pts = good.map(function(c){ return turf.point(c); });
-      return { area:area, points:turf.featureCollection(pts), failed:failed,
-               parts: good.slice(),
-               label: good.length+" center"+(good.length>1?"s":"")+"  ·  "+miles+" mi" };
+      var r = buildRadiusFromCoords(good);
+      r.failed = failed;
+      return r;
     });
   }
+
+  /* ---------- live shape rebuild (no geocoding) ----------
+     Switching concave/convex or nudging tightness/padding/radius rebuilds the
+     shape from data already in memory — zero Mapbox requests, no camera jump. */
+  function liveRebuild(){
+    if(!map || !lastArea || editing) return false;
+    var built = null;
+    try{
+      if(srcMode === "zips"){
+        var coords = {};
+        ((lastPoints && lastPoints.features) || []).forEach(function(f, i){
+          if(f && f.geometry) coords["p"+i] = f.geometry.coordinates;
+        });
+        if(!Object.keys(coords).length) return false;
+        built = buildArea(coords);
+      } else if(srcMode === "states"){
+        if(!statesGeo) return false;
+        built = buildStatesArea();
+      } else if(srcMode === "radius"){
+        if(!areaParts || !areaParts.length) return false;
+        built = buildRadiusFromCoords(areaParts);
+      }
+    }catch(e){ return false; }
+    if(!built || !built.area) return false;
+    editRings = null;
+    baseArea = built.area;
+    lastArea = dropSmallPieces(baseArea, islandPct);
+    if(built.points) lastPoints = built.points;
+    if(built.parts) areaParts = built.parts;
+    reuseArea = null; reuseSig = "";   // the saved-client shape is now stale
+    updateIslandUI();
+    renderLayers(true);                // keep the current camera
+    if(built.label) $("badge").textContent = built.label;
+    return true;
+  }
+  // small debounce so dragging a slider doesn't rebuild on every pixel
+  function debounce(fn, ms){
+    var t; return function(){ clearTimeout(t); t = setTimeout(fn, ms); };
+  }
+  var liveRebuildSoon = debounce(function(){ liveRebuild(); }, 90);
 
   /* ================= shape editing (drag the control cage) ================= */
   // Handles are a simplified control polygon; the rendered outline is the Chaikin
@@ -3142,8 +3308,11 @@
     if(map.getSource("edit-src")) map.getSource("edit-src").setData(handleFC());
     else map.addSource("edit-src", { type:"geojson", data:handleFC() });
     if(!map.getLayer("edit-handles")){
+      // invisible fat hit target under the visible dot — grabbing is forgiving
+      map.addLayer({ id:"edit-hit", type:"circle", source:"edit-src",
+        paint:{ "circle-radius":18, "circle-color":"#000", "circle-opacity":0 } });
       map.addLayer({ id:"edit-handles", type:"circle", source:"edit-src",
-        paint:{ "circle-radius":6, "circle-color":"#fff",
+        paint:{ "circle-radius":7, "circle-color":"#fff",
                 "circle-stroke-width":2.5, "circle-stroke-color":$("lineColor").value } });
     }
     syncEditModeSeg();
@@ -3158,6 +3327,7 @@
     if(map){
       map.doubleClickZoom.enable();
       if(map.getLayer("edit-handles")) map.removeLayer("edit-handles");
+      if(map.getLayer("edit-hit")) map.removeLayer("edit-hit");
       if(map.getSource("edit-src")) map.removeSource("edit-src");
     }
     if(!silent) setStatus("Shape saved. Exports will use it.","ok");
@@ -3271,38 +3441,62 @@
       map.getCanvas().style.cursor = "";
       setStatus("Marker added — type its label in the list.","ok");
     });
-    map.on("mousedown", "edit-handles", function(e){
+    // grab the NEAREST handle to the click, not just whatever the renderer
+    // returned first — makes picking deterministic when hit areas overlap
+    function nearestHandle(e){
+      var fs = e.features || [];
+      if(!fs.length) return null;
+      var best = null, bp = e.point;
+      fs.forEach(function(f){
+        var pp = map.project(f.geometry.coordinates);
+        var d = Math.hypot(pp.x-bp.x, pp.y-bp.y);
+        if(!best || d < best.d) best = { d:d, r:f.properties.r, i:f.properties.i };
+      });
+      return best;
+    }
+    map.on("mousedown", "edit-hit", function(e){
       if(!editing || editMode !== "move") return;
       e.preventDefault();
-      var p = e.features && e.features[0]; if(!p) return;
-      dragging = { r:p.properties.r, i:p.properties.i };
+      var h = nearestHandle(e); if(!h) return;
+      dragging = { r:h.r, i:h.i };
       map.dragPan.disable();
       map.getCanvas().style.cursor = "grabbing";
     });
-    map.on("click", "edit-handles", function(e){
+    map.on("click", "edit-hit", function(e){
       if(!editing || editMode !== "delete") return;
-      var p = e.features && e.features[0]; if(!p) return;
-      deleteHandle(p.properties.r, p.properties.i, !!(e.originalEvent && e.originalEvent.shiftKey));
+      var h = nearestHandle(e); if(!h) return;
+      deleteHandle(h.r, h.i, !!(e.originalEvent && e.originalEvent.shiftKey));
     });
+    // rAF-throttled drag: mousemove just records the target; one rebuild per frame
+    var pendingLngLat = null, dragRaf = null;
+    function dragFrame(){
+      dragRaf = null;
+      if(!editing || !dragging || !pendingLngLat) return;
+      var ring = editRings[dragging.r]; if(!ring) return;
+      ring[dragging.i] = pendingLngLat;
+      refreshEdit();
+    }
     map.on("mousemove", function(e){
       if(!editing || !dragging) return;
-      var ring = editRings[dragging.r]; if(!ring) return;
-      ring[dragging.i] = [e.lngLat.lng, e.lngLat.lat];
-      refreshEdit();
+      pendingLngLat = [e.lngLat.lng, e.lngLat.lat];
+      if(!dragRaf) dragRaf = requestAnimationFrame(dragFrame);
     });
     map.on("mouseup", function(){
       if(!dragging) return;
-      dragging = null; map.dragPan.enable(); map.getCanvas().style.cursor = "";
+      dragging = null; pendingLngLat = null;
+      if(dragRaf){ cancelAnimationFrame(dragRaf); dragRaf = null; }
+      map.dragPan.enable(); map.getCanvas().style.cursor = "";
+      refreshEdit();   // final settle
     });
-    map.on("mouseenter", "edit-handles", function(){
+    map.on("mouseenter", "edit-hit", function(){
       if(editing && !dragging) map.getCanvas().style.cursor = (editMode==="delete") ? "pointer" : "grab";
     });
-    map.on("mouseleave", "edit-handles", function(){ if(editing && !dragging) map.getCanvas().style.cursor = ""; });
-    map.on("dblclick", "edit-handles", function(e){
+    map.on("mouseleave", "edit-hit", function(){ if(editing && !dragging) map.getCanvas().style.cursor = ""; });
+    map.on("dblclick", "edit-hit", function(e){
       if(!editing) return;
       e.preventDefault();
-      var p = e.features && e.features[0]; if(!p) return;
-      deleteHandle(p.properties.r, p.properties.i, false);
+      var h = nearestHandle(e); if(!h) return;
+      deleteHandle(h.r, h.i, false);
     });
     map.on("click", "area-line", function(e){
       if(!editing || dragging || editMode !== "move") return;
@@ -3419,9 +3613,11 @@
       fade: map._fadeDuration
     };
     saved.logoOverlay = $("logoOverlay").style.display;
+    saved.vignette = $("vignetteOverlay").style.opacity;
     $("mapLabel").style.display = "none";
     $("badge").style.display = "none";
     $("logoOverlay").style.display = "none";   // float logo is burned into the canvas instead
+    $("vignetteOverlay").style.opacity = "0";  // vignette is burned into the canvas instead
     try{ map._fadeDuration = 0; }catch(e){}
 
     var scale = Math.min(stage.clientWidth / cssW, stage.clientHeight / cssH);
@@ -3441,6 +3637,7 @@
       $("mapLabel").style.display = saved.label;
       $("badge").style.display = saved.badge;
       $("logoOverlay").style.display = saved.logoOverlay;
+      $("vignetteOverlay").style.opacity = saved.vignette;
       try{ map._fadeDuration = saved.fade; }catch(e){}
       map.resize();
       renderLogoLayers();
