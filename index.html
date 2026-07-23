@@ -228,9 +228,8 @@
   .stage{position:relative;min-width:0}
   #map{position:absolute;inset:0}
   .arealabel{
-    position:absolute;top:26px;left:28px;z-index:5;pointer-events:none;
-    font-weight:800;text-transform:uppercase;font-size:38px;letter-spacing:-.01em;
-    color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.55);max-width:70%;line-height:.98;
+    position:absolute;z-index:5;pointer-events:none;display:none;
+    max-width:80%;height:auto;
   }
   .empty{
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -291,6 +290,8 @@
           <div class="clientrow">
             <select id="clientSel"><option value="">— new / unsaved —</option></select>
             <button class="iconbtn" id="clientSave" title="Save current setup as a client">&#128190;</button>
+            <button class="iconbtn" id="clientDup" title="Duplicate to a new name" disabled>&#10697;</button>
+            <button class="iconbtn" id="clientShare" title="Copy a share link to this client" disabled>&#128279;</button>
             <button class="iconbtn danger" id="clientDel" title="Delete selected client" disabled>&#128465;</button>
           </div>
           <div class="hint">Saves everything — zips, look, logo. Shared with anyone on this URL.</div>
@@ -353,7 +354,7 @@
 
 <main class="stage">
   <div id="map"></div>
-  <div class="arealabel" id="mapLabel"></div>
+  <img class="arealabel" id="mapLabel" alt="" />
   <img id="logoOverlay" alt="" />
   <div class="badge" id="badge"></div>
   <button class="rp-toggle" id="rpToggle">Style</button>
@@ -443,6 +444,20 @@
         </div>
 
         <div class="field">
+          <label class="lab" for="lineDash">Line style</label>
+          <select id="lineDash">
+            <option value="solid">Solid</option>
+            <option value="dashed">Dashed</option>
+            <option value="dotted">Dotted</option>
+          </select>
+        </div>
+
+        <div class="tog">
+          <span>Casing <span style="color:var(--ink-faint);font-size:11px">· contrast halo</span></span>
+          <label class="switch"><input type="checkbox" id="lineCasing"><span class="track"></span></label>
+        </div>
+
+        <div class="field" style="margin-top:13px">
           <div class="slabel"><label class="lab" style="margin:0">Glow</label><span class="val" id="glowVal">off</span></div>
           <input type="range" id="glow" min="0" max="100" step="1" value="0" />
           <div class="hint">Soft neon halo around the outline. Reads great on dark and satellite maps.</div>
@@ -497,6 +512,69 @@
         <div class="tog">
           <span>Show name on map</span>
           <label class="switch"><input type="checkbox" id="showLabel" checked><span class="track"></span></label>
+        </div>
+      </div>
+    </details>
+
+    <details class="sec" id="secTitle">
+      <summary><span class="chev">&#9654;</span>Title<span class="tag" id="titleTag"></span></summary>
+      <div class="secbody">
+        <div class="field">
+          <label class="lab">Presets</label>
+          <div class="presets" id="titlePresets"></div>
+        </div>
+        <div class="row">
+          <div class="field" style="margin-bottom:0">
+            <label class="lab" for="titlePos">Position</label>
+            <select id="titlePos">
+              <option value="tl">Top left</option>
+              <option value="tc">Top center</option>
+              <option value="tr">Top right</option>
+              <option value="ml">Mid left</option>
+              <option value="c">Center</option>
+              <option value="mr">Mid right</option>
+              <option value="bl">Bottom left</option>
+              <option value="bc">Bottom center</option>
+              <option value="br">Bottom right</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label class="lab" for="titleFont">Font</label>
+            <select id="titleFont">
+              <option value="archivo">Archivo</option>
+              <option value="system">System</option>
+              <option value="mono">Mono</option>
+              <option value="serif">Serif</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" style="margin-top:14px">
+          <label class="lab">Text &amp; background</label>
+          <div class="colorrow">
+            <input type="color" id="titleColor" value="#ffffff" title="Text colour" />
+            <select id="titleBg" style="flex:1">
+              <option value="none">No background</option>
+              <option value="pill">Pill</option>
+              <option value="bar">Bar</option>
+            </select>
+            <input type="color" id="titleBgColor" value="#14161b" title="Background colour" />
+          </div>
+        </div>
+        <div class="field">
+          <div class="slabel"><label class="lab" style="margin:0">Size</label><span class="val" id="titleSizeVal">4.2%</span></div>
+          <input type="range" id="titleSize" min="2" max="12" step="0.1" value="4.2" />
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <div class="slabel"><label class="lab" style="margin:0">Letter spacing</label><span class="val" id="titleTrackVal">0</span></div>
+          <input type="range" id="titleTrack" min="-1" max="8" step="0.2" value="0" />
+        </div>
+        <div class="tog">
+          <span>Bold</span>
+          <label class="switch"><input type="checkbox" id="titleBold" checked><span class="track"></span></label>
+        </div>
+        <div class="tog">
+          <span>UPPERCASE</span>
+          <label class="switch"><input type="checkbox" id="titleUpper" checked><span class="track"></span></label>
         </div>
       </div>
     </details>
@@ -743,6 +821,25 @@
           <button class="btn btn-primary" id="record" disabled>Record video</button>
         </div>
         <div class="hint" style="margin-top:9px" id="recHint">True-4K constant-frame-rate MP4 — drops straight into your ad editor.</div>
+
+        <div class="divider" style="margin:16px 0"></div>
+        <div class="field" style="margin-bottom:0">
+          <label class="lab">Batch PNG · every format</label>
+          <button class="btn btn-ghost" id="batchPng" style="margin-top:0" disabled>Export 16:9 + 9:16 + 1:1</button>
+          <div class="hint">Renders all three ad aspect ratios as PNGs in one go, at the resolution above.</div>
+        </div>
+        <div class="field" style="margin:12px 0 0">
+          <label class="lab">Vector export</label>
+          <div class="clientrow">
+            <button class="btn btn-ghost" id="exportSvg" style="margin-top:0;flex:1" disabled>SVG</button>
+            <button class="btn btn-ghost" id="exportGeojson" style="margin-top:0;flex:1" disabled>GeoJSON</button>
+          </div>
+          <div class="hint">The outline as scalable vector or map data — for After Effects, Figma or GIS.</div>
+        </div>
+        <div class="tog" style="margin-top:6px">
+          <span>Transparent PNG <span style="color:var(--ink-faint);font-size:11px">· outline only, no map</span></span>
+          <label class="switch"><input type="checkbox" id="pngTransparent"><span class="track"></span></label>
+        </div>
       </div>
     </details>
   </div>
@@ -860,7 +957,13 @@
       markerPreset: activeMarkerPreset,
       strokeAnim: $("strokeAnim").checked,
       strokeStart: $("strokeStart").value,
-      strokeSpan: $("strokeSpan").value
+      strokeSpan: $("strokeSpan").value,
+      lineDash: $("lineDash").value,
+      lineCasing: $("lineCasing").checked,
+      titlePos: $("titlePos").value, titleFont: $("titleFont").value, titleColor: $("titleColor").value,
+      titleBg: $("titleBg").value, titleBgColor: $("titleBgColor").value, titleBold: $("titleBold").checked,
+      titleUpper: $("titleUpper").checked, titleTrack: $("titleTrack").value, titleSize: $("titleSize").value,
+      titlePreset: activeTitlePreset
     };
     try{ localStorage.setItem(STORE, JSON.stringify(s)); }catch(e){}
   }
@@ -925,6 +1028,18 @@
     if(typeof s.strokeAnim==="boolean") $("strokeAnim").checked = s.strokeAnim;
     if(s.strokeStart!=null) $("strokeStart").value = s.strokeStart;
     if(s.strokeSpan!=null) $("strokeSpan").value = s.strokeSpan;
+    if(s.lineDash) $("lineDash").value = s.lineDash;
+    if(typeof s.lineCasing==="boolean") $("lineCasing").checked = s.lineCasing;
+    if(s.titlePos) $("titlePos").value = s.titlePos;
+    if(s.titleFont) $("titleFont").value = s.titleFont;
+    if(s.titleColor) $("titleColor").value = s.titleColor;
+    if(s.titleBg) $("titleBg").value = s.titleBg;
+    if(s.titleBgColor) $("titleBgColor").value = s.titleBgColor;
+    if(typeof s.titleBold==="boolean") $("titleBold").checked = s.titleBold;
+    if(typeof s.titleUpper==="boolean") $("titleUpper").checked = s.titleUpper;
+    if(s.titleTrack!=null) $("titleTrack").value = s.titleTrack;
+    if(s.titleSize!=null) $("titleSize").value = s.titleSize;
+    if(s.titlePreset) activeTitlePreset = s.titlePreset;
     if(s.logo) setLogo(s.logo);
   }
 
@@ -962,7 +1077,7 @@
 
   /* ---------- map ---------- */
   var map = null, lastArea = null, lastPoints = null;
-  var fillOpacity = 0.14, activePreset = "", glowAmt = 0, activeMarkerPreset = "";
+  var fillOpacity = 0.14, activePreset = "", glowAmt = 0, activeMarkerPreset = "", activeTitlePreset = "";
   var srcMode = "zips", pendingStates = [], statesGeo = null;
   var reuseArea = null, reuseParts = [], reuseSig = "", reuseLabel = "";
   // Fingerprint of everything that defines the built shape — inputs AND the
@@ -1171,9 +1286,20 @@
   }
 
   /* ---------- render onto the map ---------- */
-  var AREA_LAYERS  = ["area-fill","logo-flat","area-glow2","area-glow1","area-line","zip-dots",
+  var AREA_LAYERS  = ["area-fill","logo-flat","area-glow2","area-glow1","area-casing","area-line","zip-dots",
                       "logo-pin","marker-dots","marker-labels"];
   var AREA_SOURCES = ["area-src","outline-src","points-src","logo-flat-src","logo-pin-src","markers-src"];
+
+  function relLuma(hex){
+    var r = hexToRGB(hex);
+    return 0.2126*r[0] + 0.7152*r[1] + 0.0722*r[2];   // 0..1
+  }
+  function dashArray(lw){
+    var v = $("lineDash").value;
+    if(v === "dashed") return [2, 1.4];
+    if(v === "dotted") return [0.1, 1.9];   // round cap turns these into dots
+    return null;
+  }
 
   // The outline gets its own LineString source so the stroke can be sliced
   // progressively for the draw-on animation (a polygon source can't be trimmed).
@@ -1240,9 +1366,21 @@
         paint:{ "line-color":col, "line-width":lw*(1+2.2*g), "line-blur":lw*(0.5+1.6*g), "line-opacity":0.45*g } });
     }
 
+    // Casing = a contrasting wider line under the outline so it separates from
+    // the map. Auto light/dark based on the outline's luminance.
+    if($("lineCasing").checked){
+      var caseCol = relLuma(col) > 0.55 ? "rgba(20,22,27,0.55)" : "rgba(255,255,255,0.9)";
+      map.addLayer({ id:"area-casing", type:"line", source:"outline-src",
+        layout:{ "line-cap":"round", "line-join":"round" },
+        paint:{ "line-color":caseCol, "line-width":lw + Math.max(3, lw*0.85) } });
+    }
+
+    var dash = dashArray(lw);
+    var linePaint = { "line-color":col, "line-width":lw, "line-opacity":0.95 };
+    if(dash) linePaint["line-dasharray"] = dash;
     map.addLayer({ id:"area-line", type:"line", source:"outline-src",
       layout:{ "line-cap":"round", "line-join":"round" },
-      paint:{ "line-color":col, "line-width":lw, "line-opacity":0.95 } });
+      paint: linePaint });
 
     map.addSource("points-src", { type:"geojson", data:lastPoints });
     if($("dots").checked){
@@ -1264,16 +1402,154 @@
     }
   }
 
-  /* ---------- label overlay ---------- */
-  function syncLabel(){
-    var el = $("mapLabel");
-    el.textContent = ($("showLabel").checked ? ($("area").value || "") : "");
+  /* ================= title card =================
+     The burned-in area name, baked to canvas so preview and export are pixel-
+     identical, with real typographic control + a pill/bar background. */
+  function fontStack(v){
+    switch(v){
+      case "mono":   return '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+      case "serif":  return 'Georgia, "Times New Roman", serif';
+      case "system": return 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+      default:       return '"Archivo", system-ui, -apple-system, sans-serif';
+    }
   }
-  $("area").addEventListener("input", syncLabel);
-  $("showLabel").addEventListener("change", syncLabel);
+  var TITLE_PRESETS = [
+    { id:"boldwhite", label:"Bold white", dot:"#ffffff",
+      look:{ color:"#ffffff", bg:"none", bgColor:"#14161b", bold:true,  upper:true,  track:0,   font:"archivo", size:4.4 } },
+    { id:"pilldark",  label:"Dark pill",  dot:"#14161b",
+      look:{ color:"#ffffff", bg:"pill", bgColor:"#14161b", bold:true,  upper:true,  track:0.4, font:"archivo", size:3.6 } },
+    { id:"pillbrand", label:"Brand pill", dot:"#ff2d2d",
+      look:{ color:"#ffffff", bg:"pill", bgColor:"__brand", bold:true,  upper:true,  track:0.4, font:"archivo", size:3.6 } },
+    { id:"bar",       label:"Bar",        dot:"#f2f4f7",
+      look:{ color:"#14161b", bg:"bar",  bgColor:"#ffffff", bold:true,  upper:true,  track:1.4, font:"archivo", size:3.2 } },
+    { id:"editorial", label:"Editorial",  dot:"#e8e2d6",
+      look:{ color:"#ffffff", bg:"none", bgColor:"#14161b", bold:false, upper:false, track:0,   font:"serif",   size:5.0 } },
+    { id:"monotag",   label:"Mono tag",   dot:"#9aa0a8",
+      look:{ color:"#ffffff", bg:"pill", bgColor:"#14161b", bold:false, upper:true,  track:2.4, font:"mono",    size:2.8 } }
+  ];
+  function renderTitlePresets(){
+    var host = $("titlePresets"); if(!host) return;
+    host.innerHTML = "";
+    TITLE_PRESETS.forEach(function(p){
+      var b = document.createElement("button");
+      b.className = "preset" + (activeTitlePreset===p.id ? " on" : "");
+      b.innerHTML = '<span class="swatch" style="background:'+p.dot+'"></span>'+p.label;
+      b.addEventListener("click", function(){ applyTitlePreset(p); });
+      host.appendChild(b);
+    });
+  }
+  function applyTitlePreset(p){
+    activeTitlePreset = p.id;
+    var lk = p.look;
+    $("titleColor").value   = lk.color;
+    $("titleBg").value      = lk.bg;
+    $("titleBgColor").value = (lk.bgColor === "__brand") ? $("lineColor").value : lk.bgColor;
+    $("titleBold").checked  = lk.bold;
+    $("titleUpper").checked = lk.upper;
+    $("titleTrack").value   = lk.track;
+    $("titleFont").value    = lk.font;
+    $("titleSize").value    = lk.size;
+    syncTitleUI(); renderTitlePresets(); renderTitle(); saveSettings();
+  }
+  function clearTitlePreset(){ if(activeTitlePreset){ activeTitlePreset = ""; renderTitlePresets(); } }
+  function syncTitleUI(){
+    $("titleSizeVal").textContent  = parseFloat($("titleSize").value).toFixed(1) + "%";
+    $("titleTrackVal").textContent = $("titleTrack").value;
+    $("titleBgColor").style.opacity = ($("titleBg").value === "none") ? 0.4 : 1;
+    syncTags();
+  }
+
+  // Bake the title to a canvas at reference width refW. Returns {canvas,w,h} or null.
+  function buildTitleCanvas(refW){
+    var name = ($("area").value || "").trim();
+    if(!name) return null;
+    var pr = 2;
+    var fs = Math.max(9, refW * (parseFloat($("titleSize").value)/100));
+    var font = fontStack($("titleFont").value);
+    var weight = $("titleBold").checked ? 800 : 500;
+    var upper = $("titleUpper").checked;
+    var track = (parseFloat($("titleTrack").value)||0) * (fs/22);
+    var color = $("titleColor").value, bg = $("titleBg").value, bgColor = $("titleBgColor").value;
+    var text = upper ? name.toUpperCase() : name;
+    var lines = text.split(/\s*\\n\s*|\n/);
+    var probe = document.createElement("canvas").getContext("2d");
+    probe.font = weight + " " + fs + "px " + font;
+    function measure(s){ return probe.measureText(s).width + Math.max(0, s.length-1)*track; }
+    var textW = 0; lines.forEach(function(l){ textW = Math.max(textW, measure(l)); });
+    var lh = fs * 1.16;
+    var padX = bg==="none" ? fs*0.05 : (bg==="bar" ? fs*0.75 : fs*0.62);
+    var padY = bg==="none" ? fs*0.14 : fs*0.42;
+    var boxW = Math.ceil(textW + padX*2), boxH = Math.ceil(lines.length*lh + padY*2);
+    var pad = Math.ceil(fs*0.55);
+    var W = boxW + pad*2, H = boxH + pad*2;
+    var cv = document.createElement("canvas"); cv.width = Math.round(W*pr); cv.height = Math.round(H*pr);
+    var c = cv.getContext("2d"); c.scale(pr, pr); c.textBaseline = "middle";
+    c.font = weight + " " + fs + "px " + font;
+    var bx = pad, by = pad;
+    if(bg !== "none"){
+      c.shadowColor = "rgba(0,0,0,0.30)"; c.shadowBlur = fs*0.4; c.shadowOffsetY = fs*0.11;
+      c.fillStyle = bgColor;
+      if(bg === "bar"){ c.fillRect(bx, by, boxW, boxH); }
+      else { roundRectPath(c, bx, by, boxW, boxH, fs*0.5); c.fill(); }
+      c.shadowColor = "transparent";
+    } else {
+      c.shadowColor = "rgba(0,0,0,0.55)"; c.shadowBlur = fs*0.55; c.shadowOffsetY = fs*0.05;
+    }
+    c.fillStyle = color;
+    lines.forEach(function(l, i){
+      var y = by + padY + i*lh + lh/2, x = bx + padX;
+      if(track){ for(var k=0;k<l.length;k++){ c.fillText(l[k], x, y); x += c.measureText(l[k]).width + track; } }
+      else c.fillText(l, x, y);
+    });
+    return { canvas:cv, w:W, h:H };
+  }
+  // 9-point placement, shared by preview and export
+  function titlePlace(anchor, FW, FH, bw, bh){
+    var m = FW * 0.03;
+    var v = anchor[0]==="t" ? "t" : (anchor[0]==="b" ? "b" : "m");
+    var h = anchor[anchor.length-1]==="l" ? "l" : (anchor[anchor.length-1]==="r" ? "r" : "c");
+    return {
+      x: h==="l" ? m : (h==="r" ? FW-m-bw : (FW-bw)/2),
+      y: v==="t" ? m : (v==="b" ? FH-m-bh : (FH-bh)/2)
+    };
+  }
+  function renderTitle(){
+    var el = $("mapLabel"), stage = document.querySelector(".stage");
+    if(!$("showLabel").checked || !($("area").value||"").trim()){ el.style.display = "none"; return; }
+    var t = buildTitleCanvas(stage.clientWidth || 800);
+    if(!t){ el.style.display = "none"; return; }
+    var p = titlePlace($("titlePos").value, stage.clientWidth, stage.clientHeight, t.w, t.h);
+    el.src = t.canvas.toDataURL("image/png");
+    el.style.display = "block";
+    el.style.width = t.w + "px"; el.style.height = t.h + "px";
+    el.style.left = p.x + "px"; el.style.top = p.y + "px";
+  }
+  function drawTitleOnCtx(ctx, W, H){
+    if(!$("showLabel").checked || !($("area").value||"").trim()) return;
+    var t = buildTitleCanvas(W); if(!t) return;
+    var p = titlePlace($("titlePos").value, W, H, t.w, t.h);
+    ctx.drawImage(t.canvas, p.x, p.y, t.w, t.h);
+  }
+  // keep the old name as an alias so existing call sites still work
+  function syncLabel(){ renderTitle(); }
+
+  $("area").addEventListener("input", function(){ renderTitle(); });
+  $("showLabel").addEventListener("change", renderTitle);
+  ["titlePos","titleFont","titleColor","titleBg","titleBgColor","titleBold","titleUpper"].forEach(function(id){
+    $(id).addEventListener("change", function(){ clearTitlePreset(); syncTitleUI(); renderTitle(); saveSettings(); });
+  });
+  ["titleSize","titleTrack"].forEach(function(id){
+    $(id).addEventListener("input", function(){ clearTitlePreset(); syncTitleUI(); renderTitle(); });
+    $(id).addEventListener("change", saveSettings);
+  });
+  window.addEventListener("resize", renderTitle);
+
   $("fill").addEventListener("change", function(){ syncStyleReadouts(); clearPreset(); if(lastArea) renderLayers(); });
   $("dots").addEventListener("change", function(){ if(lastArea) renderLayers(); });
   $("lineColor").addEventListener("input", function(){ clearPreset(); if(lastArea) renderLayers(); });
+  ["lineDash","lineCasing"].forEach(function(id){
+    $(id).addEventListener("change", function(){ clearPreset(); if(lastArea) renderLayers(); saveSettings(); });
+  });
 
   /* ---------- fill opacity + glow ---------- */
   function syncStyleReadouts(){
@@ -2234,7 +2510,7 @@
     ctx.globalAlpha = prev;
   }
   function drawOverlays(ctx, W, H, name){
-    drawLabelOnCtx(ctx, W, H, name);
+    drawTitleOnCtx(ctx, W, H);   // title reads its own controls; `name` kept for callers
     drawLogoOnCtx(ctx, W, H);
   }
 
@@ -2318,6 +2594,8 @@
     names.forEach(function(n){ var op=document.createElement("option"); op.value=n; op.textContent=n; s.appendChild(op); });
     if(sel!=null) s.value = sel;
     $("clientDel").disabled = !s.value;
+    $("clientShare").disabled = !s.value;
+    $("clientDup").disabled = false;
   }
   // Pulls the full client list from the server. Called on boot and after any
   // save/delete so every open tab converges on the same shared list.
@@ -2331,12 +2609,11 @@
       .then(function(){ $("clientSel").disabled = false; });
   }
 
-  $("clientSave").addEventListener("click", function(){
-    var name = $("area").value.trim();
-    if(!name){ setStatus("Name the area first — that becomes the client name.","err"); $("area").focus(); return; }
-    var data = {
+  function currentClientData(name){
+    return {
       area:name, zips:$("zips").value, style:$("style").value, customStyle:$("customStyle").value,
       lineColor:$("lineColor").value, lineW:$("lineW").value,
+      lineDash:$("lineDash").value, lineCasing:$("lineCasing").checked,
       fill:$("fill").checked, fillOp:fillOpacity, dots:$("dots").checked,
       smooth:$("smooth").checked, showLabel:$("showLabel").checked,
       declutter:$("declutter").checked, hull:hullType,
@@ -2355,17 +2632,45 @@
       markerBold:$("markerBold").checked, markerUpper:$("markerUpper").checked,
       markerPreset:activeMarkerPreset, strokeAnim:$("strokeAnim").checked,
       strokeStart:$("strokeStart").value, strokeSpan:$("strokeSpan").value,
+      titlePos:$("titlePos").value, titleFont:$("titleFont").value, titleColor:$("titleColor").value,
+      titleBg:$("titleBg").value, titleBgColor:$("titleBgColor").value, titleBold:$("titleBold").checked,
+      titleUpper:$("titleUpper").checked, titleTrack:$("titleTrack").value, titleSize:$("titleSize").value,
+      titlePreset:activeTitlePreset,
       // the built shape rides along so reloading + exporting costs no geocoding
       savedArea: lastArea, savedParts: areaParts, sig: areaSignature(),
       savedLabel: ($("badge").textContent || "")
     };
+  }
+  function saveClientNamed(name){
     var btn = $("clientSave"); btn.disabled = true;
     setStatus("Saving “"+name+"”…");
-    apiSaveClient(name, data)
+    return apiSaveClient(name, currentClientData(name))
       .then(function(){ return refreshClientList(name); })
       .then(function(){ setStatus("Saved client “"+name+"”.","ok"); })
       .catch(function(err){ setStatus("Couldn't save: " + err.message, "err"); })
       .then(function(){ btn.disabled = false; });
+  }
+  $("clientSave").addEventListener("click", function(){
+    var name = $("area").value.trim();
+    if(!name){ setStatus("Name the area first — that becomes the client name.","err"); $("area").focus(); return; }
+    saveClientNamed(name);
+  });
+  $("clientDup").addEventListener("click", function(){
+    var base = $("area").value.trim() || "Untitled";
+    var name = window.prompt("Save a copy as:", base + " copy");
+    if(!name) return;
+    name = name.trim(); if(!name) return;
+    $("area").value = name; syncLabel();
+    saveClientNamed(name);
+  });
+  $("clientShare").addEventListener("click", function(){
+    var name = $("clientSel").value;
+    if(!name){ setStatus("Select a saved client to share.","err"); return; }
+    var link = location.origin + location.pathname + "#c=" + encodeURIComponent(name);
+    var ok = function(){ setStatus("Share link copied — opens straight to “"+name+"”.","ok"); };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(link).then(ok, function(){ window.prompt("Copy this link:", link); });
+    } else { window.prompt("Copy this link:", link); }
   });
   $("clientDel").addEventListener("click", function(){
     var name = $("clientSel").value; if(!name) return;
@@ -2376,7 +2681,7 @@
       .catch(function(err){ setStatus("Couldn't delete: " + err.message, "err"); btn.disabled = false; });
   });
   $("clientSel").addEventListener("change", function(){
-    var name = this.value; $("clientDel").disabled = !name;
+    var name = this.value; $("clientDel").disabled = !name; $("clientShare").disabled = !name;
     if(!name) return;
     var c = clientsCache[name]; if(!c) return;
     $("area").value = c.area || name;
@@ -2437,6 +2742,18 @@
     if(typeof c.strokeAnim==="boolean") $("strokeAnim").checked = c.strokeAnim;
     if(c.strokeStart!=null) $("strokeStart").value = c.strokeStart;
     if(c.strokeSpan!=null) $("strokeSpan").value = c.strokeSpan;
+    if(c.lineDash) $("lineDash").value = c.lineDash;
+    if(typeof c.lineCasing==="boolean") $("lineCasing").checked = c.lineCasing;
+    if(c.titlePos) $("titlePos").value = c.titlePos;
+    if(c.titleFont) $("titleFont").value = c.titleFont;
+    if(c.titleColor) $("titleColor").value = c.titleColor;
+    if(c.titleBg) $("titleBg").value = c.titleBg;
+    if(c.titleBgColor) $("titleBgColor").value = c.titleBgColor;
+    if(typeof c.titleBold==="boolean") $("titleBold").checked = c.titleBold;
+    if(typeof c.titleUpper==="boolean") $("titleUpper").checked = c.titleUpper;
+    if(c.titleTrack!=null) $("titleTrack").value = c.titleTrack;
+    if(c.titleSize!=null) $("titleSize").value = c.titleSize;
+    activeTitlePreset = c.titlePreset || ""; renderTitlePresets(); syncTitleUI();
     renderMarkerList(); syncStrokeUI();
     setLogo(c.logo || "");
     syncSrc(); syncStyleReadouts();
@@ -2584,6 +2901,8 @@
       var p = PRESETS.filter(function(x){ return x.id===activePreset; })[0];
       $("styleTag").textContent = p ? p.label : (glowAmt ? "glow" : "custom");
       $("logoTag").textContent  = logoDataUrl ? logoMode() : "none";
+      var tp = TITLE_PRESETS.filter(function(x){ return x.id===activeTitlePreset; })[0];
+      $("titleTag").textContent = !$("showLabel").checked ? "off" : (tp ? tp.label : "custom");
       $("markersTag").textContent = markers.length ? (markers.length + (markers.length===1?" marker":" markers")) : "none";
       var t = parseFloat($("tilt").value)||0, r = parseFloat($("rot").value)||0;
       $("motionTag").textContent = $("vidDur").value + "s" + (t?" · "+t+"°":"")
@@ -3009,7 +3328,8 @@
     $("badge").style.display = "block";
     $("badge").textContent = res.label;
     whenStyleReady(function(){ renderLayers(); syncLabel(); });
-    ["download","preview","record","editToggle","resetShape"].forEach(function(id){ $(id).disabled = false; });
+    ["download","preview","record","editToggle","resetShape","batchPng","exportSvg","exportGeojson"]
+      .forEach(function(id){ $(id).disabled = false; });
   }
 
   $("draw").addEventListener("click", function(){
@@ -3142,14 +3462,19 @@
   function renderSettled(cap){
     var maxWait = cap || 15000;
     return new Promise(function(resolve){
-      var start = performance.now(), ticks = 0;
+      var start = performance.now(), ticks = 0, done = false;
+      function fin(){ if(done) return; done = true; clearTimeout(hardCap); resolve(); }
+      // Wall-clock backstop: the flaky Standard style can stop firing render
+      // events entirely, and the old cap was only checked inside the render
+      // callback — so it could hang forever. This timer can't be starved.
+      var hardCap = setTimeout(fin, maxWait);
       function tick(){
+        if(done) return;
         ticks++;
         var ok = false;
         try{ ok = map.areTilesLoaded() && map.loaded(); }catch(e){ ok = true; }
-        // require a few render cycles so freshly-requested tiles register as pending
-        if(ok && ticks >= 3){ resolve(); return; }
-        if(performance.now() - start > maxWait){ resolve(); return; }
+        if(ok && ticks >= 3){ fin(); return; }
+        if(performance.now() - start > maxWait){ fin(); return; }
         map.once("render", tick);
         map.triggerRepaint();
       }
@@ -3184,35 +3509,136 @@
     setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
   }
 
-  /* ---------- export PNG at full resolution (map + name burned in) ---------- */
-  $("download").addEventListener("click", function(){
-    if(!map || !lastArea){ return; }
+  /* ---------- outline-only vector render (for transparent PNG) ---------- */
+  // Projects the polygon to the export canvas with map.project, so we get a clean
+  // outline with no basemap — for compositing over footage / into After Effects.
+  function drawAreaVector(ctx, W, H){
+    if(!lastArea) return;
+    var mapEl = map.getContainer();
+    var sx = W / mapEl.clientWidth, sy = H / mapEl.clientHeight, scale = (sx+sy)/2;
+    function pathPoly(){
+      ctx.beginPath();
+      turf.flatten(lastArea).features.forEach(function(pf){
+        pf.geometry.coordinates.forEach(function(ring){
+          ring.forEach(function(c,i){ var p=map.project(c); (i?ctx.lineTo:ctx.moveTo).call(ctx, p.x*sx, p.y*sy); });
+          ctx.closePath();
+        });
+      });
+    }
+    var col = $("lineColor").value, lw = parseFloat($("lineW").value)*scale;
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    if($("fill").checked){ pathPoly(); ctx.fillStyle = col; ctx.globalAlpha = fillOpacity; ctx.fill("evenodd"); ctx.globalAlpha = 1; }
+    var g = glowAmt/100;
+    if(g > 0){ pathPoly(); ctx.strokeStyle = col; ctx.globalAlpha = 0.4*g; ctx.lineWidth = lw*(1+3*g); ctx.shadowColor = col; ctx.shadowBlur = lw*(2+5*g); ctx.stroke(); ctx.shadowBlur = 0; ctx.globalAlpha = 1; }
+    if($("lineCasing").checked){ pathPoly(); ctx.strokeStyle = relLuma(col)>0.55 ? "rgba(20,22,27,0.55)":"rgba(255,255,255,0.9)"; ctx.setLineDash([]); ctx.lineWidth = lw + Math.max(3, lw*0.85); ctx.stroke(); }
+    pathPoly();
+    var dash = dashArray(lw);
+    ctx.setLineDash(dash ? dash.map(function(d){ return d*lw; }) : []);
+    ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function downloadDataUrl(url, filename){
+    var a = document.createElement("a"); a.download = filename; a.href = url; a.click();
+  }
+  function downloadText(text, filename, mime){
+    var b = new Blob([text], { type: mime || "text/plain" });
+    var a = document.createElement("a"); a.download = filename; a.href = URL.createObjectURL(b); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  }
+
+  // Render one PNG at the current resolution+format. Returns {dataUrl,W,H}.
+  function renderPNGCurrent(){
     var dims = getExportDims(), W = dims.w, H = dims.h;
-    var btn = $("download"); btn.disabled = true;
-    setStatus("Rendering " + W + "×" + H + " PNG…");
+    var transparent = $("pngTransparent").checked;
     var restore = enterExportMode(W, H);
-    (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve())
+    function done(r){ restore(); return r; }
+    return (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve())
       .catch(function(){})
-      .then(function(){
-        try{ map.jumpTo(frameArea(W, H)); }catch(e){}
-        return renderSettled();
-      })
+      .then(function(){ try{ map.jumpTo(frameArea(W, H)); }catch(e){} return renderSettled(); })
       .then(function(){
         var src = map.getCanvas();
-        W = src.width; H = src.height;   // true backing size = crisp 1:1
-        var out = document.createElement("canvas");
-        out.width = W; out.height = H;
+        var oW = src.width, oH = src.height;
+        var out = document.createElement("canvas"); out.width = oW; out.height = oH;
         var ctx = out.getContext("2d");
-        ctx.drawImage(src, 0, 0);
-        drawOverlays(ctx, W, H, $("showLabel").checked ? $("area").value.trim() : "");
-        var a = document.createElement("a");
-        a.download = ($("area").value.trim() || "service-area").replace(/[^a-z0-9]+/gi,"-").replace(/^-|-$/g,"") + ".png";
-        a.href = out.toDataURL("image/png");
-        a.click();
-        setStatus("Saved " + W + "×" + H + " PNG.", "ok");
+        if(transparent) drawAreaVector(ctx, oW, oH);
+        else ctx.drawImage(src, 0, 0);
+        drawOverlays(ctx, oW, oH, "");
+        return { dataUrl: out.toDataURL("image/png"), W:oW, H:oH };
+      })
+      .then(done, function(e){ restore(); throw e; });
+  }
+
+  var FMT_TAG = { landscape:"16x9", vertical:"9x16", square:"1x1" };
+
+  $("download").addEventListener("click", function(){
+    if(!map || !lastArea){ return; }
+    var btn = $("download"); btn.disabled = true;
+    setStatus("Rendering PNG…");
+    renderPNGCurrent()
+      .then(function(r){
+        downloadDataUrl(r.dataUrl, safeName() + "-" + FMT_TAG[$("vidFormat").value] + ".png");
+        setStatus("Saved " + r.W + "×" + r.H + " PNG" + ($("pngTransparent").checked ? " (transparent)" : "") + ".", "ok");
       })
       .catch(function(err){ setStatus((err && err.message) || "PNG export failed.", "err"); })
-      .then(function(){ restore(); btn.disabled = false; });
+      .then(function(){ btn.disabled = false; });
+  });
+
+  // Batch: all three ad aspect ratios in one go.
+  $("batchPng").addEventListener("click", function(){
+    if(!map || !lastArea){ return; }
+    var btn = $("batchPng"); btn.disabled = true;
+    var savedFmt = $("vidFormat").value;
+    var formats = ["landscape","vertical","square"];
+    var i = 0;
+    (function next(){
+      if(i >= formats.length){
+        $("vidFormat").value = savedFmt; syncTags();
+        setStatus("Saved all 3 formats.", "ok"); btn.disabled = false; return;
+      }
+      $("vidFormat").value = formats[i];
+      setStatus("Batch " + (i+1) + "/3 · " + FMT_TAG[formats[i]] + "…");
+      renderPNGCurrent().then(function(r){
+        downloadDataUrl(r.dataUrl, safeName() + "-" + FMT_TAG[formats[i]] + ".png");
+        i++; setTimeout(next, 350);
+      }).catch(function(err){
+        $("vidFormat").value = savedFmt; syncTags();
+        setStatus((err && err.message) || "Batch failed.", "err"); btn.disabled = false;
+      });
+    })();
+  });
+
+  // Vector exports — no map needed, straight from the geometry.
+  function areaToSVG(){
+    var bb = turf.bbox(lastArea);
+    var lonSpan = bb[2]-bb[0], latSpan = bb[3]-bb[1], midLat = (bb[1]+bb[3])/2;
+    var aspect = (lonSpan*Math.cos(midLat*Math.PI/180)) / latSpan;
+    var VW = 1000, VH = Math.max(1, Math.round(VW/aspect)), pad = VW*0.04;
+    function px(c){ return ((c[0]-bb[0])/lonSpan*(VW-2*pad)+pad).toFixed(1) + "," + ((bb[3]-c[1])/latSpan*(VH-2*pad)+pad).toFixed(1); }
+    var d = "";
+    turf.flatten(lastArea).features.forEach(function(pf){
+      pf.geometry.coordinates.forEach(function(ring){ d += "M" + ring.map(px).join(" L") + " Z "; });
+    });
+    var lw = parseFloat($("lineW").value);
+    var fill = $("fill").checked ? $("lineColor").value : "none";
+    var fo = $("fill").checked ? fillOpacity : 0;
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + VW + ' ' + VH + '" width="' + VW + '" height="' + VH + '">' +
+      '<path d="' + d.trim() + '" fill="' + fill + '" fill-opacity="' + fo + '" stroke="' + $("lineColor").value +
+      '" stroke-width="' + (lw*1.4).toFixed(1) + '" stroke-linejoin="round" stroke-linecap="round" fill-rule="evenodd"/></svg>';
+  }
+  $("exportSvg").addEventListener("click", function(){
+    if(!lastArea){ return; }
+    try{ downloadText(areaToSVG(), safeName() + ".svg", "image/svg+xml"); setStatus("Saved SVG outline.", "ok"); }
+    catch(e){ setStatus("SVG export failed.", "err"); }
+  });
+  $("exportGeojson").addEventListener("click", function(){
+    if(!lastArea){ return; }
+    try{
+      var fc = { type:"FeatureCollection", features: turf.flatten(lastArea).features.map(function(f){
+        return { type:"Feature", properties:{ name:$("area").value.trim() }, geometry:f.geometry }; }) };
+      downloadText(JSON.stringify(fc), safeName() + ".geojson", "application/geo+json");
+      setStatus("Saved GeoJSON.", "ok");
+    }catch(e){ setStatus("GeoJSON export failed.", "err"); }
   });
 
   /* ---------- motion: cinematic zoom-in + video ---------- */
@@ -3452,20 +3878,58 @@
   $("preview").addEventListener("click", runPreview);
   $("record").addEventListener("click", recordVideo);
 
+  /* ---------- keyboard shortcuts ---------- */
+  function isTyping(e){
+    var t = e.target, tag = t && t.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable);
+  }
+  document.addEventListener("keydown", function(e){
+    // Cmd/Ctrl+Enter — draw (works even from the zip box)
+    if((e.metaKey || e.ctrlKey) && e.key === "Enter"){ e.preventDefault(); $("draw").click(); return; }
+    // Cmd/Ctrl+S — save client
+    if((e.metaKey || e.ctrlKey) && (e.key === "s" || e.key === "S")){ e.preventDefault(); $("clientSave").click(); return; }
+    if(isTyping(e)) return;
+    if(e.key === "Escape"){
+      if(placingMarker){ $("markerPick").click(); }
+      else if(editing){ exitEdit(); }
+      return;
+    }
+    // unmodified single-key accelerators
+    if(e.metaKey || e.ctrlKey || e.altKey) return;
+    if(e.key === "d" || e.key === "D"){ $("draw").click(); }
+    else if(e.key === "e" && !$("editToggle").disabled){ $("editToggle").click(); }
+    else if(e.key === "p" && !$("download").disabled){ $("download").click(); }
+    else if(e.key === "l"){ $("themeBtn").click(); }
+  });
+
+  /* ---------- deep link: #c=ClientName opens straight to that client ---------- */
+  function openHashClient(){
+    var m = /[#&]c=([^&]+)/.exec(location.hash || "");
+    if(!m) return;
+    var name = decodeURIComponent(m[1]);
+    if(clientsCache[name]){
+      $("clientSel").value = name;
+      $("clientSel").dispatchEvent(new Event("change"));
+    }
+  }
+  window.addEventListener("hashchange", openHashClient);
+
   /* ---------- boot ---------- */
   loadSettings(); syncSeg(); syncFpsSeg(); syncLabel(); syncCustomStyle(); syncSrc();
   syncStyleReadouts(); syncLogoUI(); syncFloatOverlay(); syncStrokeUI(); renderMarkerList();
-  renderMarkerPresets(); syncMarkerUI();
+  renderMarkerPresets(); syncMarkerUI(); renderTitlePresets(); syncTitleUI(); renderTitle();
   $("tiltVal").textContent = parseFloat($("tilt").value) ? $("tilt").value+"°" : "off";
   $("rotVal").textContent = $("rot").value+"°";
   $("vidDurVal").textContent = $("vidDur").value+" s";
-  renderPresets(); refreshClientList(); syncTags();
+  renderPresets();
+  refreshClientList().then(openHashClient);
+  syncTags();
   try{ applyTheme(localStorage.getItem(THEME_KEY) || "dark"); }catch(e){ applyTheme("dark"); }
   loadUsage(); usageRender();
   setUsageToken($("token").value);
   // marker labels are baked to canvas, so wait for the webfont before first paint
   if(document.fonts && document.fonts.ready){
-    document.fonts.ready.then(function(){ if(map && markers.length) renderMarkerLayers(); }).catch(function(){});
+    document.fonts.ready.then(function(){ if(map && markers.length) renderMarkerLayers(); renderTitle(); }).catch(function(){});
   }
   if(srcMode === "states") ensureStates().catch(function(){});
   if($("token").value.trim().indexOf("pk.")===0){ initMap(); }
