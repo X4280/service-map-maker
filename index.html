@@ -479,6 +479,7 @@
               <option value="gradient">Gradient fade</option>
               <option value="spotlight">Spotlight beam</option>
             </select>
+            <div class="hint" id="spotlightHint" style="display:none">Sweeps across once during Preview/Record — parked at rest for stills.</div>
           </div>
           <div class="field" id="fillOpWrap" style="margin-top:13px">
             <div class="slabel"><label class="lab" style="margin:0">Fill opacity</label><span class="val" id="fillOpVal">14%</span></div>
@@ -1159,6 +1160,37 @@
     return p*p*(3-2*p);   // smoothstep so the tip eases in and out
   }
 
+  /* ---------- spotlight beam sweep ----------
+     A static beam sitting there for the whole clip looks flat, so instead the
+     beam sweeps through once — off-canvas before, crossing through the middle,
+     off-canvas after — over the FULL clip length, independent of the outline's
+     own start/span. At rest (not previewing/recording) it parks at the
+     centred, evenly-lit look, which is also what stills (PNG) get. */
+  var fillSweepT = 0.5;
+  function beamCenterFor(p){
+    var e = p*p*(3-2*p);           // smoothstep, matches the stroke's easing
+    return -0.35 + 1.70*e;         // fully off-canvas-before .. fully off-canvas-after
+  }
+  function spotlightActive(){ return $("fill").checked && $("fillStyle").value === "spotlight"; }
+  // Re-bakes just the fill image in place (ImageSource.updateImage) — no
+  // layer teardown, so this is cheap enough to call every export frame.
+  function setFillSweep(p){
+    fillSweepT = Math.max(0, Math.min(1, p));
+    if(!map || !spotlightActive()) return;
+    var src = map.getSource("gradfill-src");
+    if(!src || !src.updateImage){
+      // The base style (esp. the fragment-loaded Standard style) can wipe our
+      // custom sources if it reloads mid-session — same root cause as the
+      // earlier "map stayed blank" bug. Rebuilding once here re-adds the
+      // gradient layer at the CURRENT sweep position, so the beam self-heals
+      // instead of silently going dark for the rest of the clip.
+      if(lastArea) renderLayers(true);
+      return;
+    }
+    var gf = buildGradientFill("spotlight");
+    if(gf) try{ src.updateImage({ url: gf.url }); }catch(e){}
+  }
+
   function initMap(){
     var token = $("token").value.trim();
     if(!token || token.indexOf("pk.")!==0){ setStatus("Enter a valid public token (starts with pk.)", "err"); return false; }
@@ -1592,6 +1624,7 @@
   /* ---------- fill opacity + glow + vignette ---------- */
   function syncStyleReadouts(){
     $("fillOpts").style.display = $("fill").checked ? "" : "none";
+    $("spotlightHint").style.display = ($("fillStyle").value === "spotlight") ? "" : "none";
     $("fillOpVal").textContent = Math.round(fillOpacity*100) + "%";
     $("fillOp").value = Math.round(fillOpacity*100);
     $("glow").value = glowAmt;
@@ -1617,7 +1650,7 @@
     } else if(lastArea){ renderLayersSoon(); }   // gradient bakes opacity in → rebuild
   });
   $("fillOp").addEventListener("change", saveSettings);
-  $("fillStyle").addEventListener("change", function(){ clearPreset(); if(lastArea) renderLayers(); saveSettings(); });
+  $("fillStyle").addEventListener("change", function(){ clearPreset(); syncStyleReadouts(); if(lastArea) renderLayers(); saveSettings(); });
   $("glow").addEventListener("input", function(){
     glowAmt = parseFloat(this.value)||0;
     $("glowVal").textContent = glowAmt ? glowAmt + "%" : "off";
@@ -2504,12 +2537,21 @@
       function rgba(a){ return "rgba("+rgb[0]+","+rgb[1]+","+rgb[2]+","+Math.max(0,Math.min(1,a)).toFixed(3)+")"; }
       var g;
       if(mode === "spotlight"){
-        g = ctx.createLinearGradient(0, H, W, 0);        // diagonal light beam
-        g.addColorStop(0.00, rgba(0));
-        g.addColorStop(0.40, rgba(op*0.30));
-        g.addColorStop(0.54, rgba(op*1.7));              // hotspot
-        g.addColorStop(0.68, rgba(op*0.30));
-        g.addColorStop(1.00, rgba(0));
+        // A Gaussian hot-band SAMPLED at fixed stop positions, centred at
+        // `center` (which can sit outside 0..1 while off-canvas). Sampling a
+        // moving bump onto a fixed stop grid keeps every stop legally in
+        // [0,1] with no discontinuities, so the beam can be swept smoothly
+        // frame-to-frame — see setFillSweep().
+        g = ctx.createLinearGradient(0, H, W, 0);         // diagonal light beam
+        var center = beamCenterFor(fillSweepT);
+        var sigma = 0.17;
+        var N = 14;
+        for(var k=0; k<=N; k++){
+          var pos = k/N;
+          var d = pos - center;
+          var intensity = Math.exp(-(d*d)/(2*sigma*sigma));
+          g.addColorStop(pos, rgba(op * (0.16 + 1.55*intensity)));
+        }
       } else {
         g = ctx.createLinearGradient(0, H, 0, 0);        // fade from bottom up
         g.addColorStop(0, rgba(op*1.15));
@@ -3892,21 +3934,32 @@
       $("preview").disabled = false; $("record").disabled = false;
       if(strokeRaf) cancelAnimationFrame(strokeRaf);
       setStrokeProgress(1);
+      setFillSweep(0.5);   // park the beam back at its resting, evenly-lit look
     }
 
     var animStroke = $("strokeAnim").checked;
+    var animSweep = spotlightActive();
     if(animStroke) setStrokeProgress(0);
+    if(animSweep) setFillSweep(0);
 
     map.jumpTo({ center: end.center, zoom: startZoom, bearing: 0, pitch: 0 });
     map.once("idle", function(){
       map.flyTo({ center:end.center, zoom:endZoomForTilt(end.zoom, tiltDeg), bearing:rotDeg, pitch:tiltDeg,
                   duration:durMs, curve:1.42, essential:true });
-      if(animStroke){
-        // drive the draw-on off wall-clock so the preview matches the export
-        var t0 = performance.now();
+      if(animStroke || animSweep){
+        // drive both off wall-clock so the preview matches the export exactly
+        var t0 = performance.now(), lastSweep = 0;
         (function tick(){
           var t = Math.min(1, (performance.now()-t0)/durMs);
-          setStrokeProgress(strokeAt(t));
+          if(animStroke) setStrokeProgress(strokeAt(t));
+          if(animSweep){
+            // throttle the beam's re-bake — it re-renders a canvas each call,
+            // so this keeps the live preview smooth (~14fps is plenty for a
+            // slow-moving gradient; the export path isn't real-time, so IT
+            // updates every single frame for full precision).
+            var now = performance.now();
+            if(now - lastSweep > 70){ setFillSweep(t); lastSweep = now; }
+          }
           if(t < 1) strokeRaf = requestAnimationFrame(tick);
         })();
       }
@@ -3972,6 +4025,7 @@
       var zoom = o.startZoom + (o.endZoom - o.startZoom) * e;
       map.jumpTo({ center:o.center, zoom:zoom, pitch:o.tiltDeg*e, bearing:o.rotDeg*e });
       setStrokeProgress(strokeAt(t));   // deterministic draw-on, exact per frame
+      if(spotlightActive()) setFillSweep(t);   // beam sweep, exact per frame (not throttled — this loop isn't real-time)
       await renderSettled();   // block until this frame is fully loaded & crisp
 
       ctx.drawImage(src, 0, 0, W, H);
@@ -4012,17 +4066,36 @@
       try{ rec = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond: Math.min(80000000, Math.round(W*H*fps*0.1)) }); }
       catch(e){ cancelAnimationFrame(raf); reject(new Error("This browser can't record. Use Chrome.")); return; }
       rec.ondataavailable = function(ev){ if(ev.data && ev.data.size) chunks.push(ev.data); };
+      var sweepRaf = null;
       rec.onstop = function(){
         cancelAnimationFrame(raf);
+        if(sweepRaf) cancelAnimationFrame(sweepRaf);
+        setStrokeProgress(1); setFillSweep(0.5);
         downloadBlob(new Blob(chunks, { type:"video/webm" }), "webm");
         setStatus("Saved " + W + "×" + H + " WebM (convert to MP4 in your editor).", "ok");
         resolve();
       };
 
+      var animStroke = $("strokeAnim").checked, animSweep = spotlightActive();
+      if(animStroke) setStrokeProgress(0);
+      if(animSweep) setFillSweep(0);
+
       map.jumpTo({ center:o.center, zoom:o.startZoom, pitch:0, bearing:0 });
       map.once("idle", function(){
         rec.start();
         map.flyTo({ center:o.center, zoom:o.endZoom, pitch:o.tiltDeg, bearing:o.rotDeg, duration:o.durS*1000, curve:1.42, essential:true });
+        if(animStroke || animSweep){
+          var t0 = performance.now(), lastSweep = 0;
+          (function tick(){
+            var t = Math.min(1, (performance.now()-t0)/(o.durS*1000));
+            if(animStroke) setStrokeProgress(strokeAt(t));
+            if(animSweep){
+              var now = performance.now();
+              if(now - lastSweep > 70){ setFillSweep(t); lastSweep = now; }
+            }
+            if(t < 1) sweepRaf = requestAnimationFrame(tick);
+          })();
+        }
         map.once("moveend", function(){ setTimeout(function(){ if(rec.state !== "inactive") rec.stop(); }, 500); });
       });
       map.triggerRepaint();
@@ -4068,6 +4141,7 @@
     }finally{
       restore();
       setStrokeProgress(1);   // leave the finished outline on screen
+      setFillSweep(0.5);      // park the beam back at its resting look
       $("preview").disabled = false; $("record").disabled = false;
     }
   }
