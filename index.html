@@ -3296,6 +3296,9 @@
     freeDrawing = true;
     map.doubleClickZoom.disable();
     map.getCanvas().style.cursor = "crosshair";
+    // Draw mode needs no zips/area to start clicking — uncover the map, which
+    // initMap() already built, from behind the opaque "drop in a token" panel.
+    $("empty").style.display = "none";
     updateFreeDrawLayers();
     syncFreeDrawUI();
   }
