@@ -2,19 +2,21 @@
 // value = JSON string of that client's saved settings (zips, colors, style,
 // ...) plus a "team" tag (redbull/mercedes/ferrari) that says who owns it.
 //
-// Team-scoped: every client belongs to exactly one team. GET only returns
-// clients belonging to the team the caller is authenticated as (via the
-// signed token from api/team-login.js) — no token, no clients. POST requires
-// a valid token and stamps the saved client with that team; it refuses to
-// overwrite a client that already belongs to a different team. DELETE
-// likewise requires the deleting team to match the client's team.
+// Team-scoped, but not password-protected — this is a lightweight org filter,
+// not an access-control boundary (anyone can pick any team). GET only returns
+// clients tagged with the requested team; no team, no clients. POST requires
+// a team and stamps the saved client with it; it refuses to overwrite a
+// client that already belongs to a different team. DELETE likewise requires
+// the deleting request's team to match the client's team.
 const { Redis } = require("@upstash/redis");
-const { verify } = require("./_team-auth");
 
 const HASH_KEY = "sa_clients";
 const MAX_NAME_LEN = 120;
 const MAX_PAYLOAD_BYTES = 1_500_000; // one client's JSON blob (logos ride along as data URLs)
 const MAX_CLIENTS = 1000;             // total distinct clients stored
+const TEAMS = ["redbull", "mercedes", "ferrari"];
+
+function validTeam(t) { return TEAMS.indexOf(t) > -1 ? t : null; }
 
 function redis() {
   // Redis.fromEnv() reads KV_REST_API_URL / KV_REST_API_TOKEN, which Vercel
@@ -33,16 +35,16 @@ module.exports = async (req, res) => {
 
   try {
     if (req.method === "GET") {
-      const authedTeam = verify(req.query && req.query.token);
+      const team = validTeam(req.query && req.query.team);
       const all = (await db.hgetall(HASH_KEY)) || {};
       const clients = {};
-      if (authedTeam) {
+      if (team) {
         for (const name of Object.keys(all)) {
           const v = all[name];
           // @upstash/redis may hand back an already-parsed object or a raw string
           // depending on how it was stored — accept either.
           const parsed = typeof v === "string" ? JSON.parse(v) : v;
-          if (parsed && parsed.team === authedTeam) clients[name] = parsed;
+          if (parsed && parsed.team === team) clients[name] = parsed;
         }
       }
       res.status(200).json({ clients });
@@ -51,8 +53,8 @@ module.exports = async (req, res) => {
 
     if (req.method === "POST") {
       const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
-      const authedTeam = verify(body.token);
-      if (!authedTeam) { res.status(401).json({ error: "Log in as a team to save clients." }); return; }
+      const team = validTeam(body.team);
+      if (!team) { res.status(400).json({ error: "Select a team to save clients." }); return; }
 
       const name = (body.name || "").trim();
       const data = body.data;
@@ -64,7 +66,7 @@ module.exports = async (req, res) => {
       const existingRaw = await db.hget(HASH_KEY, name);
       if (existingRaw) {
         const existing = typeof existingRaw === "string" ? JSON.parse(existingRaw) : existingRaw;
-        if (existing && existing.team && existing.team !== authedTeam) {
+        if (existing && existing.team && existing.team !== team) {
           res.status(409).json({ error: "That name belongs to another team already." });
           return;
         }
@@ -73,7 +75,7 @@ module.exports = async (req, res) => {
         if (count >= MAX_CLIENTS) { res.status(507).json({ error: "Client list is full — delete some before adding more." }); return; }
       }
 
-      data.team = authedTeam;
+      data.team = team;
       const json = JSON.stringify(data);
       if (json.length > MAX_PAYLOAD_BYTES) { res.status(413).json({ error: "That client's data is too large to save." }); return; }
 
@@ -84,14 +86,14 @@ module.exports = async (req, res) => {
 
     if (req.method === "DELETE") {
       const name = (req.query && req.query.name) ? String(req.query.name) : "";
-      const authedTeam = verify(req.query && req.query.token);
+      const team = validTeam(req.query && req.query.team);
       if (!name) { res.status(400).json({ error: "Missing client name." }); return; }
-      if (!authedTeam) { res.status(401).json({ error: "Log in as a team to delete clients." }); return; }
+      if (!team) { res.status(400).json({ error: "Select a team to delete clients." }); return; }
 
       const existingRaw = await db.hget(HASH_KEY, name);
       if (existingRaw) {
         const existing = typeof existingRaw === "string" ? JSON.parse(existingRaw) : existingRaw;
-        if (existing && existing.team && existing.team !== authedTeam) {
+        if (existing && existing.team && existing.team !== team) {
           res.status(403).json({ error: "That client belongs to another team." });
           return;
         }
