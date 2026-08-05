@@ -71,6 +71,13 @@
     background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim);transition:.12s;
   }
   .themebtn:hover{color:var(--ink);border-color:var(--ink-dim)}
+  .feedbackbtn{
+    margin-top:11px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim);
+    font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+    padding:8px 13px;border-radius:8px;transition:.12s;
+  }
+  .feedbackbtn:hover{color:var(--ink);border-color:var(--ink-dim)}
   .rhead{
     padding:18px 20px 15px;border-bottom:1px solid var(--line);
     font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-dim);
@@ -286,8 +293,8 @@
     <div class="bt">
       <h1>Service Area<span class="dot">.</span>Mapper</h1>
       <p>zips &middot; states &middot; radius &rarr; 4K ads</p>
+      <button class="feedbackbtn" id="ticketBtn" title="Report a bug / request a feature">&#9993; Feedback</button>
     </div>
-    <button class="themebtn" id="ticketBtn" title="Report a bug / request a feature">&#9993;</button>
     <button class="themebtn" id="themeBtn" title="Toggle light / dark">&#9788;</button>
   </div>
 
