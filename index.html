@@ -200,6 +200,7 @@
   }
   .mrow input[type=text]{flex:1;padding:7px 9px;font-size:12px}
   .mrow .iconbtn{width:34px;font-size:13px}
+  .mrow .iconbtn.off{opacity:.4}
 
   /* logo overlay preview on the map */
   #logoOverlay{position:absolute;z-index:6;pointer-events:none;display:none;max-width:none}
@@ -314,6 +315,7 @@
             <button data-v="zips" class="on">Zips</button>
             <button data-v="states">States</button>
             <button data-v="radius">Radius</button>
+            <button data-v="draw">Draw</button>
           </div>
         </div>
 
@@ -335,6 +337,17 @@
           <div class="hint">One per line — city, address or zip. Overlaps merge into one blob.</div>
           <div class="slabel" style="margin-top:13px"><label class="lab" style="margin:0">Radius</label><span class="val" id="radiusVal">40 mi</span></div>
           <input type="range" id="radius" min="5" max="250" step="5" value="40" />
+        </div>
+
+        <div class="field" id="srcDraw" style="display:none;margin-bottom:0">
+          <label class="lab">Free draw</label>
+          <div class="hint">Click the map to place points. Double-click, or hit Finish, to close the shape.</div>
+          <div class="slabel" style="margin-top:12px"><label class="lab" style="margin:0">Points</label><span class="val" id="drawPointsVal">0</span></div>
+          <div class="row" style="margin-top:8px">
+            <button class="btn btn-ghost" id="drawUndo" style="margin-top:0" disabled>Undo point</button>
+            <button class="btn btn-ghost" id="drawClear" style="margin-top:0" disabled>Clear</button>
+          </div>
+          <button class="btn btn-primary" id="drawFinish" style="margin-top:9px" disabled>Finish shape</button>
         </div>
       </div>
     </details>
@@ -1116,6 +1129,7 @@
     var base;
     if(srcMode === "states") base = "s:" + (statesGeo ? selectedStates() : pendingStates).slice().sort().join(",");
     else if(srcMode === "radius") base = "r:" + $("radius").value + "|" + $("centers").value.trim().toLowerCase();
+    else if(srcMode === "draw") base = "d:" + freeDrawPoints.map(function(c){ return c[0].toFixed(5)+","+c[1].toFixed(5); }).join(";");
     else base = "z:" + parseZips($("zips").value).slice().sort().join(",");
     return base + "#" + [$("pad").value, $("tight").value, $("smooth").checked, hullType, $("island").value].join("|");
   }
@@ -1126,6 +1140,7 @@
   // Anchor points captured BEFORE the union merges everything — needed for
   // scatter mode, since unioning 48 contiguous states yields a single polygon.
   var areaParts = [];
+  var freeDrawing = false, freeDrawPoints = [];
 
   /* ---------- stroke draw-on animation ---------- */
   // Slice every ring of the outline to `p` of its length. Deterministic, so the
@@ -1346,8 +1361,8 @@
 
   /* ---------- render onto the map ---------- */
   var AREA_LAYERS  = ["area-fill","area-gradfill","logo-flat","area-glow2","area-glow1","area-casing","area-line","zip-dots",
-                      "logo-pin","marker-dots","marker-labels"];
-  var AREA_SOURCES = ["area-src","outline-src","points-src","logo-flat-src","logo-pin-src","markers-src","gradfill-src"];
+                      "logo-pin","marker-dots","marker-labels","freedraw-line","freedraw-pts"];
+  var AREA_SOURCES = ["area-src","outline-src","points-src","logo-flat-src","logo-pin-src","markers-src","gradfill-src","freedraw-src"];
 
   function relLuma(hex){
     var r = hexToRGB(hex);
@@ -1384,7 +1399,12 @@
   function whenStyleReady(cb){
     if(!map){ return; }
     var done = false;
-    function run(){ if(done) return; done = true; try{ cb(); }catch(e){} }
+    // Log (don't swallow) a genuine render failure here — this callback is
+    // where renderLayers() runs, and a silently-eaten exception there used to
+    // look identical to "waiting for a slow style," which cost real time to
+    // diagnose. A clean run never reaches the catch, so this is silent in
+    // normal operation.
+    function run(){ if(done) return; done = true; try{ cb(); }catch(e){ console.error("whenStyleReady callback failed:", e); } }
     if(map.isStyleLoaded()){ run(); return; }
     map.once("idle", run);
     map.once("style.load", function(){ if(map.isStyleLoaded()) run(); });
@@ -1961,7 +1981,7 @@
   function markersFC(){
     var feats = [];
     markers.forEach(function(m, i){
-      if(!m._img) return;
+      if(!m._img || m.visible === false) return;
       try{ feats.push(turf.point([m.lng, m.lat], { img:m._img, idx:i })); }catch(e){}
     });
     return turf.featureCollection(feats);
@@ -2000,6 +2020,17 @@
       inp.type="text"; inp.value = m.label || ""; inp.placeholder="label";
       inp.addEventListener("input", function(){ markers[i].label = this.value; renderMarkerLayers(); });
       inp.addEventListener("change", saveSettings);
+      var vis = document.createElement("button");
+      var isVisible = m.visible !== false;
+      vis.className = "iconbtn" + (isVisible ? "" : " off");
+      vis.innerHTML = isVisible ? "&#128065;" : "&#128584;";
+      vis.title = isVisible ? "Hide this marker" : "Show this marker";
+      vis.addEventListener("click", function(){
+        markers[i].visible = !isVisible;
+        renderMarkerList(); renderMarkerLayers();
+        if(map) renderLogoLayers();
+        saveSettings();
+      });
       var del = document.createElement("button");
       del.className="iconbtn danger"; del.innerHTML="&#128465;"; del.title="Remove";
       del.addEventListener("click", function(){
@@ -2007,14 +2038,14 @@
         if(map) renderLogoLayers();
         saveSettings();
       });
-      row.appendChild(inp); row.appendChild(del);
+      row.appendChild(inp); row.appendChild(vis); row.appendChild(del);
       host.appendChild(row);
     });
     syncTags();
   }
 
   function addMarkerAt(lng, lat, label){
-    markers.push({ lng:lng, lat:lat, label:label||"", style:$("markerStyle").value });
+    markers.push({ lng:lng, lat:lat, label:label||"", style:$("markerStyle").value, visible:true });
     renderMarkerList(); renderMarkerLayers();
     if(map) renderLogoLayers();
     saveSettings();
@@ -2346,7 +2377,7 @@
       try{ out.push(turf.pointOnFeature(lastArea).geometry.coordinates); }catch(e){}
     }
     // logo-style markers always render, whatever the placement mode
-    markers.forEach(function(m){ if(m.style === "logo") out.push([m.lng, m.lat]); });
+    markers.forEach(function(m){ if(m.style === "logo" && m.visible !== false) out.push([m.lng, m.lat]); });
     return out;
   }
 
@@ -3059,6 +3090,7 @@
     try{
       $("areaTag").textContent = srcMode==="zips"   ? (parseZips($("zips").value).length + " zips")
                                : srcMode==="states" ? ((statesGeo?selectedStates().length:(pendingStates||[]).length) + " states")
+                               : srcMode==="draw"   ? (freeDrawPoints.length + " pts drawn")
                                : ($("radius").value + " mi");
       var p = PRESETS.filter(function(x){ return x.id===activePreset; })[0];
       $("styleTag").textContent = p ? p.label : (glowAmt ? "glow" : "custom");
@@ -3081,13 +3113,27 @@
     $("srcZips").style.display   = srcMode==="zips"   ? "" : "none";
     $("srcStates").style.display = srcMode==="states" ? "" : "none";
     $("srcRadius").style.display = srcMode==="radius" ? "" : "none";
+    $("srcDraw").style.display   = srcMode==="draw"   ? "" : "none";
     // hull/tightness only mean anything when wrapping scattered zip points;
-    // padding is meaningless for a radius (the radius *is* the size)
+    // padding is meaningless for a radius or a hand-drawn shape (both are
+    // already exactly the size/boundary the user chose)
     var hullField = $("hullSeg").closest(".field");
     if(hullField) hullField.style.display = srcMode==="zips" ? "" : "none";
     $("tightWrap").style.display = (srcMode==="zips" && hullType==="concave") ? "" : "none";
     var padField = $("pad").closest(".field");
-    if(padField) padField.style.display = srcMode==="radius" ? "none" : "";
+    if(padField) padField.style.display = (srcMode==="radius" || srcMode==="draw") ? "none" : "";
+
+    if(srcMode === "draw"){
+      var token = $("token").value.trim();
+      // Skip re-calling initMap() when a map already exists — it's a harmless
+      // no-op internally, but it also re-runs setStyle on the SAME style URL,
+      // which is exactly the kind of redundant reload that trips up the
+      // Standard style's flaky fragment loader.
+      if(token.indexOf("pk.")===0 && (map || initMap())){ armFreeDraw(); syncFreeDrawUI(); }
+      else setStatus("Enter your Mapbox token above, then come back to draw.","err");
+    } else {
+      disarmFreeDraw();
+    }
   }
   $("srcSeg").addEventListener("click", function(e){
     var b = e.target.closest("button"); if(!b) return;
@@ -3179,6 +3225,103 @@
     });
   }
 
+  /* ================= free draw =================
+     Click the map to place vertices directly; no geocoding, no token cost.
+     The in-progress path/dots live on their own source so they never collide
+     with the "edit points" cage — the two never run at the same time (you
+     can only reshape a FINISHED draw via Edit points, same as any other mode). */
+  function buildFreeDrawShape(points){
+    var ring = points.concat([points[0]]);
+    var area = turf.polygon([ring]);
+    if($("smooth").checked) area = smoothPolygon(area);
+    return { area:area, points: turf.featureCollection(points.map(function(c){ return turf.point(c); })),
+             parts: points.slice(), label: points.length+"-point custom shape" };
+  }
+  function freeDrawFC(cursor){
+    var feats = [];
+    var pts = freeDrawPoints.slice();
+    if(cursor) pts = pts.concat([cursor]);
+    if(pts.length >= 2){ try{ feats.push(turf.lineString(pts)); }catch(e){} }
+    freeDrawPoints.forEach(function(c){ try{ feats.push(turf.point(c)); }catch(e){} });
+    return turf.featureCollection(feats);
+  }
+  function updateFreeDrawLayers(cursor){
+    if(!map) return;
+    var fc = freeDrawFC(cursor);
+    if(map.getSource("freedraw-src")){ map.getSource("freedraw-src").setData(fc); return; }
+    try{
+      map.addSource("freedraw-src", { type:"geojson", data:fc });
+      map.addLayer({ id:"freedraw-line", type:"line", source:"freedraw-src",
+        filter:["==",["geometry-type"],"LineString"],
+        layout:{ "line-cap":"round","line-join":"round" },
+        paint:{ "line-color":$("lineColor").value, "line-width":2.5, "line-dasharray":[2,1.4], "line-opacity":0.9 } });
+      map.addLayer({ id:"freedraw-pts", type:"circle", source:"freedraw-src",
+        filter:["==",["geometry-type"],"Point"],
+        paint:{ "circle-radius":5.5, "circle-color":"#fff", "circle-stroke-width":2.5, "circle-stroke-color":$("lineColor").value } });
+    }catch(e){}
+  }
+  function removeFreeDrawLayers(){
+    if(!map) return;
+    ["freedraw-line","freedraw-pts"].forEach(function(l){ try{ if(map.getLayer(l)) map.removeLayer(l); }catch(e){} });
+    try{ if(map.getSource("freedraw-src")) map.removeSource("freedraw-src"); }catch(e){}
+  }
+  function syncFreeDrawUI(){
+    var n = freeDrawPoints.length;
+    $("drawPointsVal").textContent = n;
+    $("drawUndo").disabled = n === 0;
+    $("drawClear").disabled = n === 0;
+    $("drawFinish").disabled = n < 3;
+  }
+  function armFreeDraw(){
+    if(!map) return;
+    freeDrawing = true;
+    map.doubleClickZoom.disable();
+    map.getCanvas().style.cursor = "crosshair";
+    updateFreeDrawLayers();
+    syncFreeDrawUI();
+  }
+  function disarmFreeDraw(){
+    if(!freeDrawing) return;
+    freeDrawing = false;
+    if(map){ map.doubleClickZoom.enable(); map.getCanvas().style.cursor = ""; }
+    // Leave freeDrawPoints intact (switching back to Draw resumes where you
+    // left off) but pull the in-progress preview off the map — otherwise a
+    // half-drawn path would sit visible on top of whatever you build next.
+    removeFreeDrawLayers();
+  }
+  function addFreeDrawPoint(lngLat){
+    freeDrawPoints.push(lngLat);
+    updateFreeDrawLayers();
+    syncFreeDrawUI();
+  }
+  function undoFreeDrawPoint(){
+    freeDrawPoints.pop();
+    updateFreeDrawLayers();
+    syncFreeDrawUI();
+  }
+  function clearFreeDraw(){
+    freeDrawPoints = [];
+    updateFreeDrawLayers();
+    syncFreeDrawUI();
+    setStatus("Cleared.","ok");
+  }
+  function finishFreeDraw(){
+    if(freeDrawPoints.length < 3){ setStatus("Add at least 3 points before finishing.","err"); return; }
+    var res;
+    try{ res = buildFreeDrawShape(freeDrawPoints); }
+    catch(e){ setStatus("Couldn't build a shape from those points — try spacing them out more.","err"); return; }
+    removeFreeDrawLayers();
+    finishBuild(res);
+    setStatus("Custom shape drawn — "+res.label+".","ok");
+    freeDrawPoints = [];
+    syncFreeDrawUI();
+    // stay armed — click straight into a new shape if they want another
+    if(map) map.getCanvas().style.cursor = "crosshair";
+  }
+  $("drawUndo").addEventListener("click", undoFreeDrawPoint);
+  $("drawClear").addEventListener("click", clearFreeDraw);
+  $("drawFinish").addEventListener("click", finishFreeDraw);
+
   /* ---------- live shape rebuild (no geocoding) ----------
      Switching concave/convex or nudging tightness/padding/radius rebuilds the
      shape from data already in memory — zero Mapbox requests, no camera jump. */
@@ -3199,6 +3342,9 @@
       } else if(srcMode === "radius"){
         if(!areaParts || !areaParts.length) return false;
         built = buildRadiusFromCoords(areaParts);
+      } else if(srcMode === "draw"){
+        if(!areaParts || areaParts.length < 3) return false;
+        built = buildFreeDrawShape(areaParts);
       }
     }catch(e){ return false; }
     if(!built || !built.area) return false;
@@ -3301,7 +3447,10 @@
   function editedArea(){
     var f = featureFromRings(editRings);
     if(!f) return null;
-    return $("smooth").checked ? smoothOnly(f, 2) : f;
+    // 3 iterations (vs the old 2) — visibly rounder without a pre-simplify pass,
+    // since the cage is already sparse and simplifying it further would throw
+    // away detail the user just dragged in on purpose.
+    return $("smooth").checked ? smoothOnly(f, 3) : f;
   }
   function handleFC(){
     var feats = [];
@@ -3315,6 +3464,15 @@
     lastArea = a;
     if(map.getSource("area-src")) map.getSource("area-src").setData(lastArea);
     if(map.getSource("edit-src")) map.getSource("edit-src").setData(handleFC());
+    // The visible outline (area-line/glow/casing) reads from its own
+    // "outline-src" LineString source — split out for the stroke draw-on
+    // animation — which this was NOT updating, so the red line stayed frozen
+    // at its pre-edit shape while dragging and only caught up when something
+    // else (e.g. toggling Fill) forced a full renderLayers().
+    if(map.getSource("outline-src")){
+      lastOutline = outlineFC(lastArea);
+      try{ map.getSource("outline-src").setData(strokeProgress >= 1 ? lastOutline : slicedOutline(strokeProgress)); }catch(e){}
+    }
   }
   function syncEditModeSeg(){
     var btns = $("editModeSeg").querySelectorAll("button");
@@ -3371,6 +3529,10 @@
       if(map.getLayer("edit-handles")) map.removeLayer("edit-handles");
       if(map.getLayer("edit-hit")) map.removeLayer("edit-hit");
       if(map.getSource("edit-src")) map.removeSource("edit-src");
+      // Fill/glow/gradient aren't re-baked on every drag frame (that's an
+      // expensive canvas op), only the cheap line/handle sources are — so
+      // catch them up now that dragging is done.
+      if(lastArea) renderLayers(true);
     }
     if(!silent) setStatus("Shape saved. Exports will use it.","ok");
   }
@@ -3473,15 +3635,40 @@
   }
 
   function wireEdit(){
-    // marker placement takes priority over shape editing
+    // marker placement takes priority over shape editing; free-draw takes
+    // priority over everything else while it's armed
     map.on("click", function(e){
-      if(!placingMarker) return;
-      addMarkerAt(e.lngLat.lng, e.lngLat.lat, "");
-      placingMarker = false;
-      $("markerPick").textContent = "Click map to place";
-      $("markerPick").classList.remove("btn-primary");
-      map.getCanvas().style.cursor = "";
-      setStatus("Marker added — type its label in the list.","ok");
+      if(placingMarker){
+        addMarkerAt(e.lngLat.lng, e.lngLat.lat, "");
+        placingMarker = false;
+        $("markerPick").textContent = "Click map to place";
+        $("markerPick").classList.remove("btn-primary");
+        map.getCanvas().style.cursor = "";
+        setStatus("Marker added — type its label in the list.","ok");
+        return;
+      }
+      if(freeDrawing){
+        addFreeDrawPoint([e.lngLat.lng, e.lngLat.lat]);
+        return;
+      }
+    });
+    // rAF-throttled rubber-band from the last placed point to the cursor —
+    // same batching pattern as the edit-handle drag, so it can't cost frame rate
+    var freeDrawPending = null, freeDrawRaf = null;
+    function freeDrawFrame(){
+      freeDrawRaf = null;
+      if(!freeDrawing || !freeDrawPoints.length || !freeDrawPending) return;
+      updateFreeDrawLayers(freeDrawPending);
+    }
+    map.on("mousemove", function(e){
+      if(!freeDrawing || !freeDrawPoints.length) return;
+      freeDrawPending = [e.lngLat.lng, e.lngLat.lat];
+      if(!freeDrawRaf) freeDrawRaf = requestAnimationFrame(freeDrawFrame);
+    });
+    map.on("dblclick", function(e){
+      if(!freeDrawing) return;
+      e.preventDefault();
+      if(freeDrawPoints.length >= 2) finishFreeDraw();
     });
     // grab the NEAREST handle to the click, not just whatever the renderer
     // returned first — makes picking deterministic when hit areas overlap
@@ -3584,6 +3771,12 @@
       var res = { area:reuseArea, points:turf.featureCollection([]), parts:reuseParts, label: reuseLabel || "saved area" };
       finishBuild(res);
       setStatus("Drawn from saved shape — no geocoding used.","ok");
+      return;
+    }
+
+    if(srcMode === "draw"){
+      if(freeDrawPoints.length >= 3) finishFreeDraw();
+      else setStatus("Click the map to place at least 3 points, then hit Draw area (or Finish shape) again.","err");
       return;
     }
 
@@ -4203,7 +4396,9 @@
     document.fonts.ready.then(function(){ if(map && markers.length) renderMarkerLayers(); renderTitle(); }).catch(function(){});
   }
   if(srcMode === "states") ensureStates().catch(function(){});
-  if($("token").value.trim().indexOf("pk.")===0){ initMap(); }
+  // syncSrc() above already calls initMap() when the persisted mode is "draw"
+  // and a token is present — don't redundantly re-init (and re-setStyle) here.
+  if(!map && $("token").value.trim().indexOf("pk.")===0){ initMap(); }
 })();
 </script>
 </body>
