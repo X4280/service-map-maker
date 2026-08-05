@@ -2871,9 +2871,28 @@
       .then(function(){ setStatus("Deleted “"+name+"”.","ok"); })
       .catch(function(err){ setStatus("Couldn't delete: " + err.message, "err"); btn.disabled = false; });
   });
+  function resetToNewArea(){
+    if(editing) exitEdit(true);
+    if(map){ AREA_LAYERS.forEach(function(l){ if(map.getLayer(l)) map.removeLayer(l); });
+             AREA_SOURCES.forEach(function(s){ if(map.getSource(s)) map.removeSource(s); }); }
+    lastArea = null; baseArea = null; lastPoints = null; areaParts = [];
+    freeDrawPoints = []; editRings = null;
+    reuseArea = null; reuseParts = []; reuseSig = ""; reuseLabel = "";
+    $("area").value = ""; $("zips").value = ""; $("centers").value = "";
+    $("badge").style.display = "none"; $("badge").textContent = "";
+    $("empty").style.display = "flex";
+    ["download","preview","record","editToggle","resetShape","batchPng","exportSvg","exportGeojson"]
+      .forEach(function(id){ $(id).disabled = true; });
+    syncLabel();
+    if(srcMode === "draw"){
+      var token = $("token").value.trim();
+      if(token.indexOf("pk.")===0 && (map || initMap())){ syncFreeDrawUI(); armFreeDraw(); }
+    }
+    setStatus("Cleared — ready for a new area.","ok");
+  }
   $("clientSel").addEventListener("change", function(){
     var name = this.value; $("clientDel").disabled = !name; $("clientShare").disabled = !name;
-    if(!name) return;
+    if(!name){ resetToNewArea(); return; }
     var c = clientsCache[name]; if(!c) return;
     $("area").value = c.area || name;
     $("zips").value = c.zips || "";
