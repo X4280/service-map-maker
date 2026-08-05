@@ -4,8 +4,7 @@ node_modules/
 .env*.local
 .DS_Store
 
-# Local-only meme assets — never publish (implies false Red Bull affiliation).
-# See HANDOFF.md if this needs revisiting.
+# Never commit — this repo is public on GitHub. The Red Bull image is served
+# only through api/redbull.js (password-gated, backed by private Redis).
 assets/redbull.gif
-assets/punchy-coin.gif
 local_preview_punchy_redbull.html

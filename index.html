@@ -291,11 +291,14 @@
 
 <aside class="panel panel-left">
   <div class="brand">
-    <img class="punchylogo" src="assets/punchy-logo.svg" alt="Punchy" />
+    <img class="punchylogo" src="assets/punchy-coin.gif" alt="Punchy" />
     <div class="bt">
       <h1>Service Area<span class="dot">.</span>Mapper</h1>
       <p>zips &middot; states &middot; radius &rarr; 4K ads</p>
-      <button class="feedbackbtn" id="ticketBtn" title="Report a bug / request a feature">&#9993; Feedback</button>
+      <div class="row" style="margin-top:11px;gap:8px">
+        <button class="feedbackbtn" id="ticketBtn" title="Report a bug / request a feature" style="margin-top:0">&#9993; Feedback</button>
+        <button class="feedbackbtn" id="redbullBtn" title="Team Red Bull (internal)" style="margin-top:0">&#128274; Team Red Bull</button>
+      </div>
     </div>
     <button class="themebtn" id="themeBtn" title="Toggle light / dark">&#9788;</button>
   </div>
@@ -924,6 +927,28 @@
       <button class="btn btn-primary" id="ticketSend" style="margin-top:0">Send</button>
     </div>
     <div class="status" id="ticketStatus"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="redbullBackdrop" style="display:none">
+  <div class="modal">
+    <h3>Team Red Bull</h3>
+    <div id="redbullGate">
+      <div class="field" style="margin-bottom:0">
+        <label class="lab" for="redbullPw">Password</label>
+        <input type="password" id="redbullPw" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="row" style="margin-top:15px">
+        <button class="btn btn-ghost" id="redbullCancel" style="margin-top:0">Cancel</button>
+        <button class="btn btn-primary" id="redbullUnlock" style="margin-top:0">Unlock</button>
+      </div>
+      <div class="status" id="redbullStatus"></div>
+    </div>
+    <div id="redbullReveal" style="display:none;text-align:center">
+      <img id="redbullImg" alt="Punchy Coin x Team Red Bull" style="max-width:100%;border-radius:10px;margin-bottom:12px" />
+      <div style="font-weight:800;text-transform:uppercase;font-size:14px;letter-spacing:-.01em;margin-bottom:14px">Punchy Coin &times; Team Red Bull</div>
+      <button class="btn btn-ghost" id="redbullClose" style="margin-top:0">Close</button>
+    </div>
   </div>
 </div>
 
@@ -2852,6 +2877,40 @@
         $("ticketMsg").value = ""; $("ticketContact").value = "";
         setTimeout(closeTicket, 1200);
       }).catch(function(){ btn.disabled = false; setTicketStatus("Network error — try again.", "err"); });
+  });
+
+  /* ================= team red bull (internal, password-gated via /api/redbull) ================= */
+  function setRedbullStatus(msg, cls){ var s=$("redbullStatus"); s.textContent=msg||""; s.className="status"+(cls?" "+cls:""); }
+  function openRedbull(){
+    $("redbullGate").style.display = "";
+    $("redbullReveal").style.display = "none";
+    $("redbullPw").value = "";
+    setRedbullStatus("");
+    $("redbullBackdrop").style.display = "flex";
+    $("redbullPw").focus();
+  }
+  function closeRedbull(){ $("redbullBackdrop").style.display = "none"; }
+  $("redbullBtn").addEventListener("click", openRedbull);
+  $("redbullCancel").addEventListener("click", closeRedbull);
+  $("redbullClose").addEventListener("click", closeRedbull);
+  $("redbullBackdrop").addEventListener("click", function(e){ if(e.target === this) closeRedbull(); });
+  $("redbullPw").addEventListener("keydown", function(e){ if(e.key === "Enter") $("redbullUnlock").click(); });
+  $("redbullUnlock").addEventListener("click", function(){
+    var pw = $("redbullPw").value;
+    if(!pw){ setRedbullStatus("Enter the password.", "err"); return; }
+    var btn = $("redbullUnlock"); btn.disabled = true;
+    setRedbullStatus("Checking…");
+    fetch("/api/redbull", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ password: pw })
+    }).then(function(r){ return r.json().catch(function(){return {};}).then(function(d){ return { ok:r.ok, d:d }; }); })
+      .then(function(res){
+        btn.disabled = false;
+        if(!res.ok){ setRedbullStatus(res.d.error || "Wrong password.", "err"); return; }
+        $("redbullImg").src = res.d.image;
+        $("redbullGate").style.display = "none";
+        $("redbullReveal").style.display = "";
+      }).catch(function(){ btn.disabled = false; setRedbullStatus("Network error — try again.", "err"); });
   });
 
   function populateClientSelect(sel){
