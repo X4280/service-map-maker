@@ -4,6 +4,7 @@
   "private": true,
   "description": "Zip/state/radius service-area map generator with 4K ad exports and server-saved clients.",
   "dependencies": {
-    "@upstash/redis": "^1.38.0"
+    "@upstash/redis": "^1.38.0",
+    "resend": "^4.0.0"
   }
 }

@@ -154,6 +154,17 @@
   .status.err{color:var(--red)}
   .status.ok{color:#5fd08a}
 
+  /* ticket / feedback modal */
+  .modal-backdrop{
+    position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.5);
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .modal{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;width:100%;max-width:380px;box-shadow:0 20px 60px var(--shadow);
+  }
+  .modal h3{margin:0 0 16px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:-.01em}
+
   /* collapsible sections */
   details.sec{border-top:1px solid var(--line)}
   details.sec:first-child{border-top:0}
@@ -276,6 +287,7 @@
       <h1>Service Area<span class="dot">.</span>Mapper</h1>
       <p>zips &middot; states &middot; radius &rarr; 4K ads</p>
     </div>
+    <button class="themebtn" id="ticketBtn" title="Report a bug / request a feature">&#9993;</button>
     <button class="themebtn" id="themeBtn" title="Toggle light / dark">&#9788;</button>
   </div>
 
@@ -878,6 +890,33 @@
     </details>
   </div>
 </aside>
+
+<div class="modal-backdrop" id="ticketBackdrop" style="display:none">
+  <div class="modal">
+    <h3>Report a bug / request a feature</h3>
+    <div class="field">
+      <label class="lab" for="ticketType">Type</label>
+      <select id="ticketType">
+        <option value="bug">Bug</option>
+        <option value="feature">Feature request</option>
+        <option value="other" selected>Something else</option>
+      </select>
+    </div>
+    <div class="field">
+      <label class="lab" for="ticketMsg">What's going on?</label>
+      <textarea id="ticketMsg" placeholder="Describe the bug, or what you'd like to see..." style="min-height:90px"></textarea>
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label class="lab" for="ticketContact">Your email (optional, for replies)</label>
+      <input type="text" id="ticketContact" placeholder="you@company.com" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="row" style="margin-top:15px">
+      <button class="btn btn-ghost" id="ticketCancel" style="margin-top:0">Cancel</button>
+      <button class="btn btn-primary" id="ticketSend" style="margin-top:0">Send</button>
+    </div>
+    <div class="status" id="ticketStatus"></div>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -2776,6 +2815,35 @@
     return fetch(CLIENTS_API + "?name=" + encodeURIComponent(name), { method:"DELETE" })
       .then(function(r){ if(!r.ok) throw new Error("Server returned " + r.status); return r.json(); });
   }
+
+  /* ================= ticket / feedback (server-backed via /api/ticket) ================= */
+  function setTicketStatus(msg, cls){ var s=$("ticketStatus"); s.textContent=msg||""; s.className="status"+(cls?" "+cls:""); }
+  function openTicket(){
+    setTicketStatus("");
+    $("ticketBackdrop").style.display = "flex";
+    $("ticketMsg").focus();
+  }
+  function closeTicket(){ $("ticketBackdrop").style.display = "none"; }
+  $("ticketBtn").addEventListener("click", openTicket);
+  $("ticketCancel").addEventListener("click", closeTicket);
+  $("ticketBackdrop").addEventListener("click", function(e){ if(e.target === this) closeTicket(); });
+  $("ticketSend").addEventListener("click", function(){
+    var message = $("ticketMsg").value.trim();
+    if(!message){ setTicketStatus("Add a description first.", "err"); return; }
+    var btn = $("ticketSend"); btn.disabled = true;
+    setTicketStatus("Sending…");
+    fetch("/api/ticket", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ type: $("ticketType").value, message: message, contact: $("ticketContact").value.trim() })
+    }).then(function(r){ return r.json().catch(function(){return {};}).then(function(d){ return { ok:r.ok, d:d }; }); })
+      .then(function(res){
+        btn.disabled = false;
+        if(!res.ok){ setTicketStatus(res.d.error || "Couldn't send.", "err"); return; }
+        setTicketStatus("Sent — thanks!", "ok");
+        $("ticketMsg").value = ""; $("ticketContact").value = "";
+        setTimeout(closeTicket, 1200);
+      }).catch(function(){ btn.disabled = false; setTicketStatus("Network error — try again.", "err"); });
+  });
 
   function populateClientSelect(sel){
     var names = Object.keys(clientsCache).sort(function(a,b){ return a.toLowerCase()<b.toLowerCase()?-1:1; });
