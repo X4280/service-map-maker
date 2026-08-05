@@ -8,3 +8,6 @@ node_modules/
 # only through api/redbull.js (password-gated, backed by private Redis).
 assets/redbull.gif
 local_preview_punchy_redbull.html
+
+# Real client business data — never belongs in a public repo.
+local_clients_backup_pre_team_migration.json

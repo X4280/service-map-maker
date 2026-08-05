@@ -314,6 +314,11 @@
           <div class="hint">Starts with <b>pk.</b> Stored only in this browser. Get it at account.mapbox.com &rarr; tokens.</div>
         </div>
         <div class="field">
+          <label class="lab">Team</label>
+          <button class="btn btn-ghost" id="teamBtn" style="margin-top:0">Not logged in — click to log in</button>
+          <div class="hint">Log in to see and save your team's clients. Drawing/exporting maps works either way.</div>
+        </div>
+        <div class="field">
           <label class="lab" for="clientSel">Saved clients</label>
           <div class="clientrow">
             <select id="clientSel"><option value="">— new / unsaved —</option></select>
@@ -322,7 +327,7 @@
             <button class="iconbtn" id="clientShare" title="Copy a share link to this client" disabled>&#128279;</button>
             <button class="iconbtn danger" id="clientDel" title="Delete selected client" disabled>&#128465;</button>
           </div>
-          <div class="hint">Saves everything — zips, look, logo. Shared with anyone on this URL.</div>
+          <div class="hint">Saves everything — zips, look, logo. Only visible to your logged-in team.</div>
         </div>
         <div class="field" style="margin-bottom:0">
           <label class="lab" for="area">Area name</label>
@@ -949,6 +954,29 @@
       <div style="font-weight:800;text-transform:uppercase;font-size:14px;letter-spacing:-.01em;margin-bottom:14px">Punchy Coin &times; Team Red Bull</div>
       <button class="btn btn-ghost" id="redbullClose" style="margin-top:0">Close</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="teamBackdrop" style="display:none">
+  <div class="modal">
+    <h3>Team Login</h3>
+    <div class="field">
+      <label class="lab" for="teamSelect">Team</label>
+      <select id="teamSelect">
+        <option value="redbull">Red Bull</option>
+        <option value="mercedes">Mercedes</option>
+        <option value="ferrari">Ferrari</option>
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label class="lab" for="teamPw">Password</label>
+      <input type="password" id="teamPw" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="row" style="margin-top:15px">
+      <button class="btn btn-ghost" id="teamCancel" style="margin-top:0">Cancel</button>
+      <button class="btn btn-primary" id="teamLoginSubmit" style="margin-top:0">Log in</button>
+    </div>
+    <div class="status" id="teamStatus"></div>
   </div>
 </div>
 
@@ -2831,24 +2859,89 @@
   var clientsLoaded = false;
 
   function apiGetClients(){
-    return fetch(CLIENTS_API).then(function(r){
+    var auth = getTeamAuth();
+    var url = CLIENTS_API + (auth && auth.token ? ("?token=" + encodeURIComponent(auth.token)) : "");
+    return fetch(url).then(function(r){
       if(!r.ok) throw new Error("Server returned " + r.status);
       return r.json();
     }).then(function(d){ return d.clients || {}; });
   }
   function apiSaveClient(name, data){
+    var auth = getTeamAuth();
     return fetch(CLIENTS_API, {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ name:name, data:data })
+      body: JSON.stringify({ name:name, data:data, token: auth ? auth.token : "" })
     }).then(function(r){
       if(!r.ok) return r.json().catch(function(){return {};}).then(function(j){ throw new Error(j.error || ("Server returned " + r.status)); });
       return r.json();
     });
   }
   function apiDeleteClient(name){
-    return fetch(CLIENTS_API + "?name=" + encodeURIComponent(name), { method:"DELETE" })
-      .then(function(r){ if(!r.ok) throw new Error("Server returned " + r.status); return r.json(); });
+    var auth = getTeamAuth();
+    var url = CLIENTS_API + "?name=" + encodeURIComponent(name) + (auth && auth.token ? ("&token=" + encodeURIComponent(auth.token)) : "");
+    return fetch(url, { method:"DELETE" })
+      .then(function(r){
+        if(!r.ok) return r.json().catch(function(){return {};}).then(function(j){ throw new Error(j.error || ("Server returned " + r.status)); });
+        return r.json();
+      });
   }
+
+  /* ================= team login (server-backed via /api/team-login) ================= */
+  var TEAM_AUTH_KEY = "sa_team_auth";
+  var TEAM_NAMES = { redbull:"Red Bull", mercedes:"Mercedes", ferrari:"Ferrari" };
+  function getTeamAuth(){
+    try{ var raw = localStorage.getItem(TEAM_AUTH_KEY); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
+  }
+  function setTeamAuth(auth){
+    try{ if(auth) localStorage.setItem(TEAM_AUTH_KEY, JSON.stringify(auth)); else localStorage.removeItem(TEAM_AUTH_KEY); }catch(e){}
+  }
+  function syncTeamBtn(){
+    var auth = getTeamAuth();
+    $("teamBtn").textContent = (auth && auth.team)
+      ? ("Team " + (TEAM_NAMES[auth.team] || auth.team) + " — log out")
+      : "Not logged in — click to log in";
+  }
+  function setTeamStatus(msg, cls){ var s=$("teamStatus"); s.textContent=msg||""; s.className="status"+(cls?" "+cls:""); }
+  function openTeamLogin(){
+    setTeamStatus(""); $("teamPw").value = "";
+    $("teamBackdrop").style.display = "flex";
+    $("teamPw").focus();
+  }
+  function closeTeamLogin(){ $("teamBackdrop").style.display = "none"; }
+  $("teamBtn").addEventListener("click", function(){
+    var auth = getTeamAuth();
+    if(auth && auth.team){
+      setTeamAuth(null); syncTeamBtn();
+      setStatus("Logged out.","ok");
+      refreshClientList("");
+    } else {
+      openTeamLogin();
+    }
+  });
+  $("teamCancel").addEventListener("click", closeTeamLogin);
+  $("teamBackdrop").addEventListener("click", function(e){ if(e.target === this) closeTeamLogin(); });
+  $("teamPw").addEventListener("keydown", function(e){ if(e.key === "Enter") $("teamLoginSubmit").click(); });
+  $("teamLoginSubmit").addEventListener("click", function(){
+    var team = $("teamSelect").value;
+    var pw = $("teamPw").value;
+    if(!pw){ setTeamStatus("Enter the password.", "err"); return; }
+    var btn = $("teamLoginSubmit"); btn.disabled = true;
+    setTeamStatus("Checking…");
+    fetch("/api/team-login", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ team: team, password: pw })
+    }).then(function(r){ return r.json().catch(function(){return {};}).then(function(d){ return { ok:r.ok, d:d }; }); })
+      .then(function(res){
+        btn.disabled = false;
+        if(!res.ok){ setTeamStatus(res.d.error || "Wrong password.", "err"); return; }
+        setTeamAuth({ team: res.d.team, token: res.d.token });
+        syncTeamBtn();
+        closeTeamLogin();
+        setStatus("Logged in as Team " + (TEAM_NAMES[res.d.team] || res.d.team) + ".", "ok");
+        refreshClientList("");
+      }).catch(function(){ btn.disabled = false; setTeamStatus("Network error — try again.", "err"); });
+  });
+  syncTeamBtn();
 
   /* ================= ticket / feedback (server-backed via /api/ticket) ================= */
   function setTicketStatus(msg, cls){ var s=$("ticketStatus"); s.textContent=msg||""; s.className="status"+(cls?" "+cls:""); }
@@ -2969,6 +3062,7 @@
     };
   }
   function saveClientNamed(name){
+    if(!getTeamAuth()){ setStatus("Log in as a team first (top of Setup) to save clients.","err"); return Promise.resolve(); }
     var btn = $("clientSave"); btn.disabled = true;
     setStatus("Saving “"+name+"”…");
     return apiSaveClient(name, currentClientData(name))
